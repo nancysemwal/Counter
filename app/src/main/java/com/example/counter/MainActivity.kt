@@ -1,6 +1,11 @@
 package com.example.counter
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -25,6 +30,20 @@ import com.example.counter.ui.theme.CounterTheme
 class MainActivity : ComponentActivity() {
 
     val counterViewModel by viewModels<CounterViewModel>()
+    private lateinit var  droneService : DroneService
+    private var bound : Boolean = false
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as DroneService.DroneBinder
+            droneService = binder.getService()
+            bound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            bound = false
+        }
+
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         counterViewModel.updateCount()
         super.onCreate(savedInstanceState)
@@ -34,6 +53,19 @@ class MainActivity : ComponentActivity() {
             }
         }
         //counterViewModel.updateCount()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Intent(this, DroneService::class.java).also { intent ->
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unbindService(serviceConnection)
+        bound = false
     }
 }
 
