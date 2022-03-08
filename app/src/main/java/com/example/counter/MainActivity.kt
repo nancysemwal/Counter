@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import android.view.View
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -18,6 +19,7 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private var bound : Boolean = false
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d("HAPTORK", "Service is Connected")
             val binder = service as DroneService.DroneBinder
             droneService = binder.getService()
             bound = true
@@ -45,11 +48,13 @@ class MainActivity : ComponentActivity() {
 
     }
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d("HAPTORK", "HELLO")
         counterViewModel.updateCount()
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
-                MainScreen(counterViewModel = counterViewModel)
+                //MainScreen(counterViewModel = counterViewModel)
+                MainScreen(counterViewModel = counterViewModel, droneService = droneService)
             }
         }
         //counterViewModel.updateCount()
@@ -60,6 +65,7 @@ class MainActivity : ComponentActivity() {
         Intent(this, DroneService::class.java).also { intent ->
             bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
+        Log.d("HAPTORK", "onStart")
     }
 
     override fun onStop() {
@@ -67,13 +73,23 @@ class MainActivity : ComponentActivity() {
         unbindService(serviceConnection)
         bound = false
     }
+
+    fun onClick(){
+        if(bound) {
+            val num : Int = droneService.randomNumber
+            Toast.makeText(this, "Number : $num", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
 
 @Composable
-fun MainScreen(counterViewModel: CounterViewModel){
+fun MainScreen(counterViewModel: CounterViewModel,
+            droneService: DroneService){
     val count by counterViewModel.counter.observeAsState()
+    val connected by droneService.SERVICE_CONNECTED.observeAsState()
     Column() {
         Text(text = count.toString())
+        Text(text = "Service Connected: " + connected.toString())
         Button(onClick = {counterViewModel.updateCount()}) {
             Text(text = "Update")
         }
@@ -89,4 +105,5 @@ class CounterViewModel : ViewModel(){
         Log.d("SEE","inside update")
         _count.value = ++count
     }
+
 }
