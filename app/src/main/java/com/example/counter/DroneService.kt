@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Binder
 import android.os.IBinder
@@ -26,6 +27,8 @@ class DroneService : Service() {
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                             device?.apply {
                                 Log.d("HAPTORK", "Permission Granted")
+                                usbConnected.value = true
+                                connection = usbManager.openDevice(device)
                             }
                         } else {
                             Log.d("HAPTORK", "Permission is not Granted")
@@ -52,7 +55,10 @@ class DroneService : Service() {
     private val ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION"
     private val ACTION_USB_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED"
     private val serialPortConnected = false
-    var SERVICE_CONNECTED = MutableLiveData("False")
+    private lateinit var connection : UsbDeviceConnection
+    var usbConnected = MutableLiveData<Boolean>(false)
+
+    var SERVICE_CONNECTED = MutableLiveData<Boolean>(false)
 
     val randomNumber : Int
         get() = mGenerator.nextInt()
@@ -60,7 +66,7 @@ class DroneService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d("HAPTORK","Service's onCreate()")
-        SERVICE_CONNECTED.value = "true"
+        SERVICE_CONNECTED.value = true
         setFilter()
         findSerialPortDevice()
     }
