@@ -28,6 +28,7 @@ class DroneService : Service() {
                             device?.apply {
                                 Log.d("HAPTORK", "Permission Granted")
                                 usbConnected.value = true
+                                usbConnected2 = true
                                 connection = usbManager.openDevice(device)
                             }
                         } else {
@@ -57,7 +58,7 @@ class DroneService : Service() {
     private val serialPortConnected = false
     private lateinit var connection : UsbDeviceConnection
     var usbConnected = MutableLiveData<Boolean>(false)
-
+    var usbConnected2 = false
     var SERVICE_CONNECTED = MutableLiveData<Boolean>(false)
 
     val randomNumber : Int
