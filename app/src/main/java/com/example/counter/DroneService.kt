@@ -19,9 +19,14 @@ import kotlin.random.Random
 class DroneService : Service() {
 
 
-    private var fn: (Boolean)->Unit = {b->{}}
-    fun setSetterFn(_fn: (Boolean)->Unit) {
-        fn = _fn
+    private var _setUsbStatus : (Boolean) -> Unit = { b -> {}}
+    private var _setBoundStatus : (Boolean) -> Unit = { b -> {}}
+    fun setUsbStatus(_fn: (Boolean)->Unit) {
+        _setUsbStatus = _fn
+    }
+
+    fun setBoundStatus(_fn: (Boolean) -> Unit) {
+        _setBoundStatus = _fn
     }
 
     private val usbReceiver = object : BroadcastReceiver(){
@@ -36,7 +41,7 @@ class DroneService : Service() {
                                 Log.d("HAPTORK", "Permission Granted")
                                 usbConnected.value = true
                                 usbConnected2 = true
-                                fn(true)
+                                _setUsbStatus(true)
                                 //connection = usbManager.openDevice(device)
                             }
                         } else {
@@ -75,7 +80,7 @@ class DroneService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d("HAPTORK","Service's onCreate()")
-        SERVICE_CONNECTED.value = true
+        _setBoundStatus(true)
         setFilter()
         findSerialPortDevice()
     }

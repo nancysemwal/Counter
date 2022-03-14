@@ -9,30 +9,23 @@ import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
-import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.getValue
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import com.example.counter.ui.theme.CounterTheme
 
 class MainActivity : ComponentActivity() {
 
     private var droneService : DroneService? = null
-    private val bound = MutableLiveData<Boolean>(false)
+    private var isBound = mutableStateOf(false)
     private var isConnected = mutableStateOf(false)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as DroneService.DroneBinder
             droneService = binder.getService()
-            droneService?.setSetterFn { b -> isConnected.value = b }
-            //bound = true
-            bound.value = true
+            droneService?.setUsbStatus { b -> isConnected.value = b }
+            droneService?.setBoundStatus { b -> isBound.value  = b}
+            isBound.value = true
             if (droneService != null) {
                 //isConnected.value = true
                 //usbConnected = droneService!!.usbConnected
@@ -43,8 +36,7 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            //bound = false
-            bound.value = false
+            droneService?.setBoundStatus { b -> isBound.value = false }
         }
 
     }
@@ -53,7 +45,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
-                MainScreen(isConnected.value)
+                MainScreen(isBound.value, isConnected.value)
             }
         }
     }
@@ -70,16 +62,17 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         unbindService(serviceConnection)
-        //bound = false
-        bound.value = false
+        isBound.value = false
+        droneService?.setBoundStatus { b -> isBound.value = false }
     }
 }
 
 @Composable
-fun MainScreen(isConnected : Boolean)
+fun MainScreen(isBound : Boolean, isConnected : Boolean)
 {
     Column() {
-        Text(text = isConnected.toString())
+        Text(text = "Service Connected : $isConnected")
+        Text(text = "USB Connected : $isConnected")
     }
 }
 
