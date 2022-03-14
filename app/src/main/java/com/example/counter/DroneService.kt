@@ -17,6 +17,13 @@ import androidx.lifecycle.MutableLiveData
 import kotlin.random.Random
 
 class DroneService : Service() {
+
+
+    private var fn: (Boolean)->Unit = {b->{}}
+    fun setSetterFn(_fn: (Boolean)->Unit) {
+        fn = _fn
+    }
+
     private val usbReceiver = object : BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d("HAPTORK", "onReceive()")
@@ -29,7 +36,8 @@ class DroneService : Service() {
                                 Log.d("HAPTORK", "Permission Granted")
                                 usbConnected.value = true
                                 usbConnected2 = true
-                                connection = usbManager.openDevice(device)
+                                fn(true)
+                                //connection = usbManager.openDevice(device)
                             }
                         } else {
                             Log.d("HAPTORK", "Permission is not Granted")
