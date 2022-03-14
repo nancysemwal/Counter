@@ -54,10 +54,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             CounterTheme {
                 MainScreen(isConnected.value)
-            //MainScreen(counterViewModel = counterViewModel)
             }
         }
-        //counterViewModel.updateCount()
     }
 
     override fun onStart() {
