@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
             val binder = service as DroneService.DroneBinder
             droneService = binder.getService()
             droneService?.setUsbStatus { b -> isConnected.value = b }
-            droneService?.setBoundStatus { b -> isBound.value  = b}
+            //droneService?.setBoundStatus { b -> isBound.value  = b}
             isBound.value = true
             if (droneService != null) {
                 //isConnected.value = true
@@ -36,7 +36,8 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            droneService?.setBoundStatus { b -> isBound.value = false }
+            //droneService?.setBoundStatus { b -> isBound.value = false }
+            isBound.value = false
         }
 
     }
@@ -71,7 +72,7 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(isBound : Boolean, isConnected : Boolean)
 {
     Column() {
-        Text(text = "Service Connected : $isConnected")
+        Text(text = "Service Connected : $isBound")
         Text(text = "USB Connected : $isConnected")
     }
 }
