@@ -19,12 +19,13 @@ class MainActivity : ComponentActivity() {
     private var droneService : DroneService? = null
     private var isBound = mutableStateOf(false)
     private var isConnected = mutableStateOf(false)
+    private var pitch = mutableStateOf("")
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as DroneService.DroneBinder
             droneService = binder.getService()
             droneService?.setUsbStatus { b -> isConnected.value = b }
-            //droneService?.setBoundStatus { b -> isBound.value  = b}
+            droneService?.setPitch { b -> pitch.value = b }
             isBound.value = true
             if (droneService != null) {
                 //isConnected.value = true
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
-                MainScreen(isBound.value, isConnected.value)
+                MainScreen(isBound.value, isConnected.value, pitch.value)
             }
         }
     }
@@ -63,17 +64,19 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         unbindService(serviceConnection)
+        droneService?.onDestroy()
         isBound.value = false
         droneService?.setBoundStatus { b -> isBound.value = false }
     }
 }
 
 @Composable
-fun MainScreen(isBound : Boolean, isConnected : Boolean)
+fun MainScreen(isBound : Boolean, isConnected : Boolean, pitch : String)
 {
     Column() {
         Text(text = "Service Connected : $isBound")
         Text(text = "USB Connected : $isConnected")
+        Text(text = "Pitch : $pitch")
     }
 }
 

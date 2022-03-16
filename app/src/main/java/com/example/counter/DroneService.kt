@@ -13,15 +13,19 @@ import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.MutableLiveData
+import com.felhr.usbserial.CDCSerialDevice
 import com.felhr.usbserial.SerialInputStream
 import com.felhr.usbserial.SerialOutputStream
 import com.felhr.usbserial.UsbSerialDevice
+import io.dronefleet.mavlink.Mavlink2Message
 import io.dronefleet.mavlink.MavlinkConnection
 import io.dronefleet.mavlink.MavlinkMessage
 import io.dronefleet.mavlink.common.Attitude
+import io.dronefleet.mavlink.common.Heartbeat
 import io.dronefleet.mavlink.common.RequestDataStream
 import java.io.EOFException
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 class DroneService : Service() {
@@ -30,6 +34,7 @@ class DroneService : Service() {
     private var _setUsbStatus : (Boolean) -> Unit = { b -> {}}
     private var _setBoundStatus : (Boolean) -> Unit = { b -> {}}
     private var _setUsbConnection : (String) -> Unit = { b -> {}}
+    private var _setPitch : (String) -> Unit = {b -> {}}
     fun setUsbStatus(_fn: (Boolean)->Unit) {
         _setUsbStatus = _fn
     }
@@ -40,6 +45,10 @@ class DroneService : Service() {
 
     fun setUsbConnection(_fn: (String) -> Unit){
         _setUsbConnection = _fn
+    }
+
+    fun setPitch(_fn: (String) -> Unit){
+        _setPitch = _fn
     }
 
     private val usbReceiver = object : BroadcastReceiver(){
@@ -58,9 +67,11 @@ class DroneService : Service() {
                                 usbConnection = usbManager.openDevice(device)
                                 usbDevice = device
                                 Log.d("Drishi", "$usbConnection")
-                                startMav()
+                                ConnectionThread().start()
+                                //startMav()
                             }
                         } else {
+                            //TODO - convey "permission not granted" message to user
                             Log.d("HAPTORK", "Permission is not Granted")
                         }
                     }
@@ -69,6 +80,15 @@ class DroneService : Service() {
                     if(!serialPortConnected) {
                         findSerialPortDevice()
                     }
+                }
+                else if(ACTION_USB_DETACHED == intent.action){
+                    if(serialPortConnected){
+                        serialPort.syncClose()
+                        readThread.setKeep(false)
+
+                    }
+                    _setUsbStatus(false)
+                    serialPortConnected = false
                 }
             }
         }
@@ -84,7 +104,9 @@ class DroneService : Service() {
 
     private val ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION"
     private val ACTION_USB_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED"
-    private val serialPortConnected = false
+    private val ACTION_USB_DETACHED = "android.hardware.usb.action.USB_DEVICE_DETACHED";
+    private var serialPortConnected = false
+    private lateinit var readThread : DroneService.ReadThread
     private lateinit var usbConnection : UsbDeviceConnection
     private lateinit var usbDevice: UsbDevice
     private lateinit var serialPort : UsbSerialDevice
@@ -108,6 +130,7 @@ class DroneService : Service() {
         var filter = IntentFilter()
         filter.addAction(ACTION_USB_PERMISSION)
         filter.addAction(ACTION_USB_ATTACHED)
+        filter.addAction(ACTION_USB_DETACHED)
         registerReceiver(usbReceiver, filter)
     }
 
@@ -129,6 +152,7 @@ class DroneService : Service() {
         }
         if(serialPort != null){
             if(serialPort.syncOpen()){
+                serialPortConnected = true
                 serialPort.setBaudRate(57600)
                 var inputStream : SerialInputStream = serialPort.inputStream
                 //Log.d("strm",inputStream.read().toString())
@@ -168,6 +192,59 @@ class DroneService : Service() {
         }
     }
 
+    inner class ConnectionThread : Thread() {
+        public override fun run() {
+            serialPort = UsbSerialDevice.createUsbSerialDevice(usbDevice, usbConnection)
+            if (serialPort != null) {
+                if (serialPort.syncOpen()) {
+                    serialPortConnected = true
+                    serialPort.setBaudRate(57600)
+                    var inputStream: SerialInputStream = serialPort.inputStream
+                    var outputStream: SerialOutputStream = serialPort.outputStream
+                    mavlinkConnection = MavlinkConnection.create(inputStream, outputStream)
+                    Log.d("thrd", "${mavlinkConnection}")
+                    val requestDataStream = RequestDataStream.builder()
+                        .targetSystem(1)
+                        .targetComponent(0)
+                        .reqStreamId(0)
+                        .reqMessageRate(1)
+                        .startStop(1)
+                        .build()
+                    try {
+                        mavlinkConnection.send2(255, 0, requestDataStream)
+                    } catch (e: IOException) {
+                        e.printStackTrace()
+                    }
+                    readThread = ReadThread()
+                    readThread.start()
+                }
+            }
+        }
+    }
+
+    inner class ReadThread : Thread() {
+        var keep: AtomicBoolean = AtomicBoolean(true)
+        public override fun run() {
+            Log.d("thrd", "in read thread")
+            //var message = mavlinkConnection.next()
+            //Log.d("msgx", "${message.toString()}")
+            while (keep.get()){
+                try{
+                    var message = mavlinkConnection.next()
+                    if(message.payload is Attitude){
+                        var attitudeMsg : Attitude = message.payload as Attitude
+                        _setPitch(attitudeMsg.pitch().toString())
+                    }
+                }catch (e : IOException){
+                    Log.d("xxception", "hello")
+                }
+            }
+        }
+        fun setKeep(keep: Boolean) {
+            this.keep.set(keep)
+        }
+    }
+
     inner class DroneBinder : Binder(){
         fun getService() : DroneService = this@DroneService
     }
@@ -180,4 +257,8 @@ class DroneService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(usbReceiver)
+    }
 }
