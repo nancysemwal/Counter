@@ -12,29 +12,28 @@ import android.hardware.usb.UsbManager
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
-import androidx.lifecycle.MutableLiveData
-import com.felhr.usbserial.CDCSerialDevice
 import com.felhr.usbserial.SerialInputStream
 import com.felhr.usbserial.SerialOutputStream
 import com.felhr.usbserial.UsbSerialDevice
-import io.dronefleet.mavlink.Mavlink2Message
 import io.dronefleet.mavlink.MavlinkConnection
-import io.dronefleet.mavlink.MavlinkMessage
-import io.dronefleet.mavlink.common.Attitude
-import io.dronefleet.mavlink.common.Heartbeat
-import io.dronefleet.mavlink.common.RequestDataStream
-import java.io.EOFException
+import io.dronefleet.mavlink.annotations.MavlinkEntryInfo
+import io.dronefleet.mavlink.annotations.MavlinkEnum
+import io.dronefleet.mavlink.ardupilotmega.CopterMode
+import io.dronefleet.mavlink.ardupilotmega.EkfStatusFlags
+import io.dronefleet.mavlink.ardupilotmega.EkfStatusReport
+import io.dronefleet.mavlink.common.*
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.random.Random
 
 class DroneService : Service() {
 
 
     private var _setUsbStatus : (Boolean) -> Unit = { b -> {}}
     private var _setBoundStatus : (Boolean) -> Unit = { b -> {}}
-    private var _setUsbConnection : (String) -> Unit = { b -> {}}
     private var _setPitch : (String) -> Unit = {b -> {}}
+    private var _setRoll : (String) -> Unit = {b -> {}}
+    private var _setYaw : (String) -> Unit = {b -> {}}
+
     fun setUsbStatus(_fn: (Boolean)->Unit) {
         _setUsbStatus = _fn
     }
@@ -43,12 +42,16 @@ class DroneService : Service() {
         _setBoundStatus = _fn
     }
 
-    fun setUsbConnection(_fn: (String) -> Unit){
-        _setUsbConnection = _fn
-    }
-
     fun setPitch(_fn: (String) -> Unit){
         _setPitch = _fn
+    }
+
+    fun setRoll(_fn: (String) -> Unit){
+        _setRoll = _fn
+    }
+
+    fun setYaw(_fn: (String) -> Unit){
+        _setYaw = _fn
     }
 
     private val usbReceiver = object : BroadcastReceiver(){
@@ -61,8 +64,6 @@ class DroneService : Service() {
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                             device?.apply {
                                 Log.d("Drishi", "Permission Granted")
-                                usbConnected.value = true
-                                usbConnected2 = true
                                 _setUsbStatus(true)
                                 usbConnection = usbManager.openDevice(device)
                                 usbDevice = device
@@ -88,6 +89,7 @@ class DroneService : Service() {
 
                     }
                     _setUsbStatus(false)
+                    _setPitch("")
                     serialPortConnected = false
                 }
             }
@@ -95,8 +97,6 @@ class DroneService : Service() {
     }
 
     private val binder = DroneBinder()
-
-    private val mGenerator = Random(10)
 
     private val usbManager by lazy {
         getSystemService(Context.USB_SERVICE) as UsbManager
@@ -111,12 +111,16 @@ class DroneService : Service() {
     private lateinit var usbDevice: UsbDevice
     private lateinit var serialPort : UsbSerialDevice
     private lateinit var mavlinkConnection : MavlinkConnection
-    var usbConnected = MutableLiveData<Boolean>(false)
-    var usbConnected2 = false
-    var SERVICE_CONNECTED = MutableLiveData<Boolean>(false)
-
-    val randomNumber : Int
-        get() = mGenerator.nextInt()
+    private lateinit var pitch : String
+    private lateinit var roll : String
+    private lateinit var yaw : String
+    private var armable : Boolean = false
+    private var flightMode : String = ""
+    private var gpsFixType : Int = -1
+    private var ekfStatusFlags : Int = -1
+    val STATUS_NO_GPS = "com.nancy.dronestatus.NO_GPS"
+    val STATUS_NO_EKF = "com.nancy.dronestatus.NO_EKF"
+    val STATUS_NO_FLIGHTMODE = "com.nancy.dronestatus.NO_FLIGHTMODE"
 
     override fun onCreate() {
         super.onCreate()
@@ -145,55 +149,8 @@ class DroneService : Service() {
         }
     }
 
-    private fun startMav(){
-        if(usbDevice != null && usbConnection != null){
-            serialPort = UsbSerialDevice.createUsbSerialDevice(usbDevice, usbConnection)
-            Log.d("drishi", "$serialPort")
-        }
-        if(serialPort != null){
-            if(serialPort.syncOpen()){
-                serialPortConnected = true
-                serialPort.setBaudRate(57600)
-                var inputStream : SerialInputStream = serialPort.inputStream
-                //Log.d("strm",inputStream.read().toString())
-                var outputStream : SerialOutputStream = serialPort.outputStream
-                mavlinkConnection = MavlinkConnection.create(inputStream, outputStream)
-                Log.d("Drishi", "$mavlinkConnection")
-                var requestDataStreamMsg : RequestDataStream = RequestDataStream.builder()
-                    .targetSystem(1)
-                    .targetComponent(0)
-                    .reqStreamId(0)
-                    .reqMessageRate(1)
-                    .startStop(1)
-                    .build()
-                try {
-                    mavlinkConnection.send2(255, 0, requestDataStreamMsg)
-                } catch (e : IOException){
-                    Log.d("xxception",e.stackTraceToString())
-                }
-                Log.d("mavlink", mavlinkConnection.toString())
-                try {
-                    var mavMsg = mavlinkConnection.next()
-                }
-                catch (e : EOFException){
-                    Log.d("xxception2", e.stackTraceToString())
-                }
-
-//                while(mavlinkConnection.next() != null){
-//                    mavMsg = mavlinkConnection.next()
-//                    if(mavMsg.payload is Attitude){
-//                        Log.d("attitude", "${mavMsg.payload}")
-//                    }else{
-//                        Log.d("attitude", "hello")
-//                    }
-//                }
-                //Log.d("Mavlink", "${mavMsg.payload.toString()}")
-            }
-        }
-    }
-
     inner class ConnectionThread : Thread() {
-        public override fun run() {
+        override fun run() {
             serialPort = UsbSerialDevice.createUsbSerialDevice(usbDevice, usbConnection)
             if (serialPort != null) {
                 if (serialPort.syncOpen()) {
@@ -224,7 +181,7 @@ class DroneService : Service() {
 
     inner class ReadThread : Thread() {
         var keep: AtomicBoolean = AtomicBoolean(true)
-        public override fun run() {
+        override fun run() {
             Log.d("thrd", "in read thread")
             //var message = mavlinkConnection.next()
             //Log.d("msgx", "${message.toString()}")
@@ -233,7 +190,36 @@ class DroneService : Service() {
                     var message = mavlinkConnection.next()
                     if(message.payload is Attitude){
                         var attitudeMsg : Attitude = message.payload as Attitude
+                        pitch = attitudeMsg.pitch().toString()
                         _setPitch(attitudeMsg.pitch().toString())
+                        _setRoll(attitudeMsg.roll().toString())
+                        _setYaw(attitudeMsg.yaw().toString())
+                    }
+                    if(message.payload is Heartbeat){
+                        var heartbeatMsg : Heartbeat = message.payload as Heartbeat
+                        var customMode : Int = heartbeatMsg.customMode().toInt()
+                        flightMode = CopterMode.values()[customMode].toString()
+                    }
+                    if(message.payload is GpsRawInt){
+                        var gpsMsg : GpsRawInt = message.payload as GpsRawInt
+                        gpsFixType = gpsMsg.fixType().value()
+                        Log.d("armable", "$gpsFixType")
+                    }
+                    if(message.payload is EkfStatusReport){
+                        var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
+                        var castToEKF = EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS as MavlinkEnum
+                        //var x = castToEkf as MavlinkEnum
+                        //if ekfMsg.flags().value()
+                        //var x = EkfStatusFlags.values()[castToEKF]
+                        //x.
+                                //as MavlinkEntryInfo
+                        Log.d("ekf","$ekfMsg + ${ekfMsg.flags().value()} + $castToEKF")
+
+                        //var x : EkfStatusFlags = ekfMsg.flags().value() as EkfStatusFlags
+                        //var y = (x == EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS)
+                        //Log.d("ekf","$ekfMsg + $x + $y")
+
+                        //ekfStatusFlags = (x == EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS)
                     }
                 }catch (e : IOException){
                     Log.d("xxception", "hello")
@@ -242,6 +228,10 @@ class DroneService : Service() {
         }
         fun setKeep(keep: Boolean) {
             this.keep.set(keep)
+        }
+        fun getPitch() : String{
+            Log.d("lunch", "in get pitch")
+            return pitch
         }
     }
 
@@ -260,5 +250,39 @@ class DroneService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(usbReceiver)
+    }
+
+    fun isArmable() : Boolean{
+        Log.d("armable", "in armable")
+        var intent : Intent? = null
+        when{
+            flightMode == "COPTER_MODE_INITIALISING" -> intent = Intent(STATUS_NO_FLIGHTMODE)
+            gpsFixType <= 1 -> intent = Intent(STATUS_NO_GPS)
+            ekfStatusFlags <= 0 -> intent = Intent(STATUS_NO_EKF)
+        }
+        /*if(flightMode == "COPTER_MODE_INITIALISING") {
+            Log.d("armable", "no mode")
+            intent = Intent(STATUS_NO_FLIGHTMODE)
+        }
+        else if(gpsFixType <= 1){
+            intent = Intent(STATUS_NO_GPS)
+        }
+        else if(ekfStatusFlags <= 0){
+            intent = Intent(STATUS_NO_EKF)
+        }*/
+        if(intent != null){
+            Log.d("armable","sending ${intent.action}")
+            sendBroadcast(intent)
+        }
+        armable = (flightMode != "COPTER_MODE_INITIALISING")
+                && (gpsFixType > 1)
+                && (ekfStatusFlags > 0)
+        return armable
+    }
+
+    fun arm() {
+        if(true){
+            var mode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
+        }
     }
 }
