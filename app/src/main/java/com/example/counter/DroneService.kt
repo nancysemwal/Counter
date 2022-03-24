@@ -16,10 +16,7 @@ import com.felhr.usbserial.SerialInputStream
 import com.felhr.usbserial.SerialOutputStream
 import com.felhr.usbserial.UsbSerialDevice
 import io.dronefleet.mavlink.MavlinkConnection
-import io.dronefleet.mavlink.annotations.MavlinkEntryInfo
-import io.dronefleet.mavlink.annotations.MavlinkEnum
 import io.dronefleet.mavlink.ardupilotmega.CopterMode
-import io.dronefleet.mavlink.ardupilotmega.EkfStatusFlags
 import io.dronefleet.mavlink.ardupilotmega.EkfStatusReport
 import io.dronefleet.mavlink.common.*
 import java.io.IOException
@@ -33,6 +30,7 @@ class DroneService : Service() {
     private var _setPitch : (String) -> Unit = {b -> {}}
     private var _setRoll : (String) -> Unit = {b -> {}}
     private var _setYaw : (String) -> Unit = {b -> {}}
+    private var _setDroneStatus : (String) -> Unit = {b -> {}}
 
     fun setUsbStatus(_fn: (Boolean)->Unit) {
         _setUsbStatus = _fn
@@ -54,6 +52,10 @@ class DroneService : Service() {
         _setYaw = _fn
     }
 
+    fun setDroneStatus(_fn: (String) -> Unit){
+        _setDroneStatus = _fn
+    }
+
     private val usbReceiver = object : BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d("HAPTORK", "onReceive()")
@@ -65,6 +67,7 @@ class DroneService : Service() {
                             device?.apply {
                                 Log.d("Drishi", "Permission Granted")
                                 _setUsbStatus(true)
+                                _setDroneStatus(Status.Online.name)
                                 usbConnection = usbManager.openDevice(device)
                                 usbDevice = device
                                 Log.d("Drishi", "$usbConnection")
@@ -106,6 +109,9 @@ class DroneService : Service() {
     private val ACTION_USB_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED"
     private val ACTION_USB_DETACHED = "android.hardware.usb.action.USB_DEVICE_DETACHED";
     private var serialPortConnected = false
+    private val systemId = 255
+    private val componentId = 0
+    private var flag = -1
     private lateinit var readThread : DroneService.ReadThread
     private lateinit var usbConnection : UsbDeviceConnection
     private lateinit var usbDevice: UsbDevice
@@ -159,7 +165,7 @@ class DroneService : Service() {
                     var inputStream: SerialInputStream = serialPort.inputStream
                     var outputStream: SerialOutputStream = serialPort.outputStream
                     mavlinkConnection = MavlinkConnection.create(inputStream, outputStream)
-                    Log.d("thrd", "${mavlinkConnection}")
+                    Log.d("thrd", "$mavlinkConnection")
                     val requestDataStream = RequestDataStream.builder()
                         .targetSystem(1)
                         .targetComponent(0)
@@ -207,12 +213,33 @@ class DroneService : Service() {
                     }
                     if(message.payload is EkfStatusReport){
                         var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
+                        ekfStatusFlags = ekfMsg.flags().value() and 512
+                    }
+                    if(message.payload is CommandAck){
+                        var ackMsg : CommandAck = message.payload as CommandAck
+                        Log.d("armg","$ackMsg")
+                        if(ackMsg.command().value() == 400){
+                            if (flag == 1){
+                                if (ackMsg.result().value() == 0){
+                                    //TODO:
+                                        // Arming command always succeeds leading to wrong ARMED status update
+                                    _setDroneStatus(Status.Armed.name)
+                                }
+                                else{
+                                    //TODO: notify user that drone couldn't arm
+                                    Log.d("armg", "Arming failed")
+                                }
+                            }
+                        }
+                    }
+                    /*if(message.payload is EkfStatusReport){
+                        var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
                         var castToEKF = EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS as MavlinkEnum
                         //var x = castToEkf as MavlinkEnum
                         //if ekfMsg.flags().value()
                         //var x = EkfStatusFlags.values()[castToEKF]
                         //x.
-                                //as MavlinkEntryInfo
+                        //as MavlinkEntryInfo
                         Log.d("ekf","$ekfMsg + ${ekfMsg.flags().value()} + $castToEKF")
 
                         //var x : EkfStatusFlags = ekfMsg.flags().value() as EkfStatusFlags
@@ -220,7 +247,7 @@ class DroneService : Service() {
                         //Log.d("ekf","$ekfMsg + $x + $y")
 
                         //ekfStatusFlags = (x == EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS)
-                    }
+                    }*/
                 }catch (e : IOException){
                     Log.d("xxception", "hello")
                 }
@@ -277,12 +304,59 @@ class DroneService : Service() {
         armable = (flightMode != "COPTER_MODE_INITIALISING")
                 && (gpsFixType > 1)
                 && (ekfStatusFlags > 0)
+        if (armable){
+            _setDroneStatus(Status.Armable.name)
+        }
         return armable
     }
 
+    fun changeMode(mode : Int){
+        val command : MavCmd = MavCmd.MAV_CMD_DO_SET_MODE
+        val message : CommandLong = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(1F)
+            .param1(mode.toFloat())
+            .param3(0F)
+            .param4(0F)
+            .param5(0F)
+            .param6(0F)
+            .param7(0F)
+            .build();
+        try{
+            mavlinkConnection.send2(systemId, componentId, message)
+        }catch (e : IOException){
+
+        }
+    }
+
     fun arm() {
+        flag = 1
         if(true){
-            var mode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
+        //if(isArmable()){
+            var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
+            changeMode(mode = guidedMode)
+            var command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
+            val message : CommandLong = CommandLong.builder()
+                .targetSystem(1)
+                .targetComponent(0)
+                .command(command)
+                .confirmation(0)
+                .param1(1F)
+                .param1(0F)
+                .param3(0F)
+                .param4(0F)
+                .param5(0F)
+                .param6(0F)
+                .param7(0F)
+                .build();
+            try{
+                mavlinkConnection.send2(systemId, componentId, message)
+            }catch (e : IOException){
+
+            }
         }
     }
 }

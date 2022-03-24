@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private var pitch = mutableStateOf("")
     private var roll = mutableStateOf("")
     private var yaw = mutableStateOf("")
+    private var droneStatus = mutableStateOf(Status.Offline.name)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as DroneService.DroneBinder
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
             droneService?.setPitch { b -> pitch.value = b }
             droneService?.setRoll { b -> roll.value = b }
             droneService?.setYaw { b -> yaw.value = b }
+            droneService?.setDroneStatus { b -> droneStatus.value = b }
             isBound.value = true
             if (droneService != null) {
                 //isConnected.value = true
@@ -67,7 +69,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             CounterTheme {
                 MainScreen(isBound.value, isUsbConnected.value, pitch.value,
-                    roll.value, yaw.value, droneService)
+                    roll.value, yaw.value, droneService, droneStatus.value)
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
                     , droneService = droneService)*/
             }
@@ -103,10 +105,16 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(isBound : Boolean, isConnected : Boolean, pitch : String
-                ,roll : String, yaw: String, droneService: DroneService?)
+fun MainScreen(
+    isBound: Boolean, isConnected: Boolean, pitch: String
+    , roll: String, yaw: String, droneService: DroneService?
+    , droneStatus: String
+)
 {
-    var armable : Boolean? = false
+    Log.d("sttsAct","$droneStatus")
+    val armable : Boolean? = true
+    val armed : Boolean? = false
+
     Box(modifier = Modifier.fillMaxSize()){
         Column() {
             Text(text = "Service Connected : $isBound")
@@ -114,6 +122,11 @@ fun MainScreen(isBound : Boolean, isConnected : Boolean, pitch : String
             Text(text = "Pitch : $pitch")
             Text(text = "Roll : $roll")
             Text(text = "Yaw : $yaw")
+            Text(text = "Drone Status : $droneStatus")
+        }
+        val armButtonEnabled = when(armable){
+            true -> true
+            else -> false
         }
         Row(
             horizontalArrangement = Arrangement.SpaceAround,
@@ -123,18 +136,35 @@ fun MainScreen(isBound : Boolean, isConnected : Boolean, pitch : String
                 .padding(15.dp)
                 .align(Alignment.BottomCenter)
         ) {
-            Button(onClick = {
-                armable = droneService?.isArmable() }) {
-                Text(text = "Arm")
+            val armButtonLabel = when(armed){
+                true -> "Disarm"
+                false -> "Arm"
+                null -> TODO()
             }
-            Button(onClick = { /*TODO*/ }) {
+            val takeoffButtonEnabled = when(droneStatus){
+                Status.Armed.name -> true
+                else -> false
+            }
+            val landButtonEnabled = when(droneStatus){
+                Status.InFlight.name -> true
+                else -> false
+            }
+            Button(enabled = armButtonEnabled, onClick = {
+                droneService?.arm() }) {
+                Text(text = armButtonLabel)
+            }
+            Button(enabled = takeoffButtonEnabled, onClick = { /*TODO*/ }) {
                 Text(text = "Takeoff")
             }
-            Button(onClick = { /*TODO*/ }) {
+            Button(enabled = landButtonEnabled, onClick = { /*TODO*/ }) {
                 Text(text = "Land")
             }
         }
     }
+}
+
+enum class Status {
+    Offline, Online, Armable, Armed, InFlight
 }
 
 @Composable
