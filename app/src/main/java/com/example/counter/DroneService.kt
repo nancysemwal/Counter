@@ -31,6 +31,7 @@ class DroneService : Service() {
     private var _setRoll : (String) -> Unit = {b -> {}}
     private var _setYaw : (String) -> Unit = {b -> {}}
     private var _setDroneStatus : (String) -> Unit = {b -> {}}
+    private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
 
     fun setUsbStatus(_fn: (Boolean)->Unit) {
         _setUsbStatus = _fn
@@ -56,6 +57,10 @@ class DroneService : Service() {
         _setDroneStatus = _fn
     }
 
+    fun writeToDebugSpace(_fn: (String) -> Unit){
+        _writeToDebugSpace = _fn
+    }
+
     private val usbReceiver = object : BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d("HAPTORK", "onReceive()")
@@ -67,7 +72,8 @@ class DroneService : Service() {
                             device?.apply {
                                 Log.d("Drishi", "Permission Granted")
                                 _setUsbStatus(true)
-                                _setDroneStatus(Status.Online.name)
+                                droneStatus = Status.Unarmed.name
+                                _setDroneStatus(droneStatus)
                                 usbConnection = usbManager.openDevice(device)
                                 usbDevice = device
                                 Log.d("Drishi", "$usbConnection")
@@ -96,6 +102,8 @@ class DroneService : Service() {
                     _setRoll("")
                     _setYaw("")
                     _setDroneStatus("")
+                    _writeToDebugSpace("")
+                    droneStatus = ""
                     serialPortConnected = false
                 }
             }
@@ -128,6 +136,7 @@ class DroneService : Service() {
     private var flightMode : String = ""
     private var gpsFixType : Int = -1
     private var ekfStatusFlags : Int = -1
+    private var droneStatus : String = ""
     val STATUS_NO_GPS = "com.nancy.dronestatus.NO_GPS"
     val STATUS_NO_EKF = "com.nancy.dronestatus.NO_EKF"
     val STATUS_NO_FLIGHTMODE = "com.nancy.dronestatus.NO_FLIGHTMODE"
@@ -209,14 +218,19 @@ class DroneService : Service() {
                         Log.d("hrtbt", "basemode : $baseMode")
                         flightMode = CopterMode.values()[customMode].toString()
                         armed = (baseMode and 128) != 0
-                        if(armed){
+                        if(armed && (droneStatus == Status.InFlight.name ||
+                                    droneStatus == Status.Unarmed.name)){
                             _setDroneStatus(Status.Armed.name)
+                            _writeToDebugSpace("Arming Successful")
+                        }
+                        else if(!armed){
+                            droneStatus = Status.Unarmed.name
+                            _setDroneStatus(droneStatus)
                         }
                     }
                     if(message.payload is GpsRawInt){
                         var gpsMsg : GpsRawInt = message.payload as GpsRawInt
                         gpsFixType = gpsMsg.fixType().value()
-                        Log.d("armable", "$gpsFixType")
                     }
                     if(message.payload is EkfStatusReport){
                         var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
@@ -225,9 +239,25 @@ class DroneService : Service() {
                     if(message.payload is CommandAck){
                         var ackMsg : CommandAck = message.payload as CommandAck
                         if(ackMsg.command().value() == 400){
-                            if (ackMsg.result().value() != 0){
-                                Log.d("armg","could not arm")
-                                //TODO: Notify user of arming/disarming failure
+                            if(flag == 1){
+                                if (ackMsg.result().value() != 0){
+                                    _writeToDebugSpace("Could not arm")
+                                }
+                            }else if(flag == 0){
+                                if(ackMsg.result().value() == 0){
+                                    droneStatus = Status.Unarmed.name
+                                }
+                            }
+                        }
+                        if(ackMsg.command().value() == 22){
+                            if (ackMsg.result().value() == 0) {
+                                droneStatus = Status.InFlight.name
+                                _setDroneStatus(Status.InFlight.name)
+                            }
+                        }
+                        if(ackMsg.command().value() == 21){
+                            if(ackMsg.result().value() == 0){
+                                droneStatus = Status.Armed.name
                             }
                         }
                     }
@@ -277,24 +307,13 @@ class DroneService : Service() {
         unregisterReceiver(usbReceiver)
     }
 
-    private fun isArmable() : Boolean{
-        Log.d("armable", "in armable")
+    fun isArmable() : Boolean{
         var intent : Intent? = null
         when{
             flightMode == "COPTER_MODE_INITIALISING" -> intent = Intent(STATUS_NO_FLIGHTMODE)
             gpsFixType <= 1 -> intent = Intent(STATUS_NO_GPS)
             ekfStatusFlags <= 0 -> intent = Intent(STATUS_NO_EKF)
         }
-        /*if(flightMode == "COPTER_MODE_INITIALISING") {
-            Log.d("armable", "no mode")
-            intent = Intent(STATUS_NO_FLIGHTMODE)
-        }
-        else if(gpsFixType <= 1){
-            intent = Intent(STATUS_NO_GPS)
-        }
-        else if(ekfStatusFlags <= 0){
-            intent = Intent(STATUS_NO_EKF)
-        }*/
         if(intent != null){
             sendBroadcast(intent)
         }
@@ -335,7 +354,7 @@ class DroneService : Service() {
         //if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
-            var command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
+            val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
             val message : CommandLong = CommandLong.builder()
                 .targetSystem(1)
                 .targetComponent(0)
@@ -351,7 +370,34 @@ class DroneService : Service() {
                 .build();
             try{
                 mavlinkConnection.send2(systemId, componentId, message)
-                Log.d("hrtbt","arming message sent")
+                _writeToDebugSpace("Sent Arming Command")
+            }catch (e : IOException){
+
+            }
+        }
+    }
+    fun disarm() {
+        flag = 0
+        if(true){
+            //if(armed){
+            val guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
+            changeMode(mode = guidedMode)
+            val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
+            val message : CommandLong = CommandLong.builder()
+                .targetSystem(1)
+                .targetComponent(0)
+                .command(command)
+                .confirmation(0)
+                .param1(0F)
+                .param1(0F)
+                .param3(0F)
+                .param4(0F)
+                .param5(0F)
+                .param6(0F)
+                .param7(0F)
+                .build();
+            try{
+                mavlinkConnection.send2(systemId, componentId, message)
             }catch (e : IOException){
 
             }
@@ -359,7 +405,7 @@ class DroneService : Service() {
     }
 
     fun takeoff(altitude : Float){
-        var command : MavCmd = MavCmd.MAV_CMD_NAV_TAKEOFF
+        val command : MavCmd = MavCmd.MAV_CMD_NAV_TAKEOFF
         val message : CommandLong = CommandLong.builder()
             .targetSystem(1)
             .targetComponent(0)
@@ -380,8 +426,8 @@ class DroneService : Service() {
         }
     }
 
-    fun land(latitude: Float? = 0F, longitude: Float? = 0F){
-        var command : MavCmd = MavCmd.MAV_CMD_NAV_LAND
+    fun land(latitude: Float = 0F, longitude: Float = 0F){
+        val command : MavCmd = MavCmd.MAV_CMD_NAV_LAND
         val message : CommandLong = CommandLong.builder()
             .targetSystem(1)
             .targetComponent(0)
@@ -391,8 +437,8 @@ class DroneService : Service() {
             .param1(0F)
             .param3(0F)
             .param4(0F)
-            .param5(latitude!!)
-            .param6(longitude!!)
+            .param5(latitude)
+            .param6(longitude)
             .param7(0F)
             .build();
         try{

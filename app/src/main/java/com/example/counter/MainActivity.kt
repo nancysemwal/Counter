@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
     private var roll = mutableStateOf("")
     private var yaw = mutableStateOf("")
     private var droneStatus = mutableStateOf(Status.Offline.name)
+    private var debugMessage = mutableStateOf("")
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as DroneService.DroneBinder
@@ -46,35 +47,26 @@ class MainActivity : ComponentActivity() {
             droneService?.setRoll { b -> roll.value = b }
             droneService?.setYaw { b -> yaw.value = b }
             droneService?.setDroneStatus { b -> droneStatus.value = b }
+            droneService?.writeToDebugSpace { b -> debugMessage.value = debugMessage.value + "\n" + b }
             isBound.value = true
-            if (droneService != null) {
-                //isConnected.value = true
-                //usbConnected = droneService!!.usbConnected
-                Log.d("HAPTORK", "Service is Connected")
-            } else {
-                Log.d("HAPTORK", "Service not there")
-            }
             setFilters()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            //droneService?.setBoundStatus { b -> isBound.value = false }
             isBound.value = false
         }
 
     }
     override fun onCreate(savedInstanceState: Bundle?) {
-        Log.d("HAPTORK", "HELLO")
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
                 MainScreen(isBound.value, isUsbConnected.value, pitch.value,
-                    roll.value, yaw.value, droneService, droneStatus.value)
+                    roll.value, yaw.value, droneService, droneStatus.value, debugMessage.value)
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
                     , droneService = droneService)*/
             }
         }
-        //setFilters()
     }
 
     override fun onStart() {
@@ -82,8 +74,6 @@ class MainActivity : ComponentActivity() {
         Intent(this, DroneService::class.java).also { intent ->
             bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
-
-        Log.d("HAPTORK", "onStart")
     }
 
     override fun onStop() {
@@ -108,12 +98,16 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
-    , droneStatus: String
+    , droneStatus: String, debugMessage: String
 )
 {
-    Log.d("sttsAct","$droneStatus")
-    val armable : Boolean? = true
-    val armed : Boolean? = false
+    //TODO: set armable & armed from the service
+    val armable : Boolean = true
+    val armed : Boolean = false
+    /*val armed : Boolean = when(droneStatus){
+        Status.Armed.name -> true
+        else -> false
+    }*/
 
     Box(modifier = Modifier.fillMaxSize()){
         Column() {
@@ -123,11 +117,10 @@ fun MainScreen(
             Text(text = "Roll : $roll")
             Text(text = "Yaw : $yaw")
             Text(text = "Drone Status : $droneStatus")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "Messages: $debugMessage")
         }
-        val armButtonEnabled = when(armable){
-            true -> true
-            else -> false
-        }
+
         Row(
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,
@@ -136,29 +129,37 @@ fun MainScreen(
                 .padding(15.dp)
                 .align(Alignment.BottomCenter)
         ) {
+            val armButtonEnabled = when(armable){
+                true -> true
+                else -> false
+            }
             val armButtonLabel = when(armed){
                 true -> "Disarm"
                 false -> "Arm"
-                null -> TODO()
             }
             val takeoffButtonEnabled = when(droneStatus){
                 Status.Armed.name -> true
                 else -> false
             }
-            /*val landButtonEnabled = when(droneStatus){
+            val landButtonEnabled = when(droneStatus){
                 Status.InFlight.name -> true
                 else -> false
-            }*/
+            }
             Button(enabled = armButtonEnabled, onClick = {
-                droneService?.arm() }) {
+                if(droneStatus == Status.Unarmed.name) {
+                    droneService?.arm()
+                }else if(droneStatus == Status.Armed.name){
+                    droneService?.disarm()
+                }
+            }) {
                 Text(text = armButtonLabel)
             }
             Button(enabled = takeoffButtonEnabled, onClick = {
                 droneService?.takeoff(10F) }) {
                 Text(text = "Takeoff")
             }
-            Button(enabled = true/*landButtonEnabled*/, onClick = {
-                droneService?.land(5F, 6F)
+            Button(enabled = landButtonEnabled, onClick = {
+                droneService?.land()
             }) {
                 Text(text = "Land")
             }
@@ -167,7 +168,7 @@ fun MainScreen(
 }
 
 enum class Status {
-    Offline, Online, Armable, Armed, InFlight
+    Offline, Unarmed, Armable, Armed, InFlight
 }
 
 @Composable
