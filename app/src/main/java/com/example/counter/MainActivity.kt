@@ -145,18 +145,21 @@ fun MainScreen(
                 Status.Armed.name -> true
                 else -> false
             }
-            val landButtonEnabled = when(droneStatus){
+            /*val landButtonEnabled = when(droneStatus){
                 Status.InFlight.name -> true
                 else -> false
-            }
+            }*/
             Button(enabled = armButtonEnabled, onClick = {
                 droneService?.arm() }) {
                 Text(text = armButtonLabel)
             }
-            Button(enabled = takeoffButtonEnabled, onClick = { /*TODO*/ }) {
+            Button(enabled = takeoffButtonEnabled, onClick = {
+                droneService?.takeoff(10F) }) {
                 Text(text = "Takeoff")
             }
-            Button(enabled = landButtonEnabled, onClick = { /*TODO*/ }) {
+            Button(enabled = true/*landButtonEnabled*/, onClick = {
+                droneService?.land(5F, 6F)
+            }) {
                 Text(text = "Land")
             }
         }

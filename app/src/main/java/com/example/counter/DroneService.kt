@@ -93,6 +93,9 @@ class DroneService : Service() {
                     }
                     _setUsbStatus(false)
                     _setPitch("")
+                    _setRoll("")
+                    _setYaw("")
+                    _setDroneStatus("")
                     serialPortConnected = false
                 }
             }
@@ -121,6 +124,7 @@ class DroneService : Service() {
     private lateinit var roll : String
     private lateinit var yaw : String
     private var armable : Boolean = false
+    private var armed : Boolean = false
     private var flightMode : String = ""
     private var gpsFixType : Int = -1
     private var ekfStatusFlags : Int = -1
@@ -188,9 +192,6 @@ class DroneService : Service() {
     inner class ReadThread : Thread() {
         var keep: AtomicBoolean = AtomicBoolean(true)
         override fun run() {
-            Log.d("thrd", "in read thread")
-            //var message = mavlinkConnection.next()
-            //Log.d("msgx", "${message.toString()}")
             while (keep.get()){
                 try{
                     var message = mavlinkConnection.next()
@@ -204,7 +205,13 @@ class DroneService : Service() {
                     if(message.payload is Heartbeat){
                         var heartbeatMsg : Heartbeat = message.payload as Heartbeat
                         var customMode : Int = heartbeatMsg.customMode().toInt()
+                        var baseMode = heartbeatMsg.baseMode().value()
+                        Log.d("hrtbt", "basemode : $baseMode")
                         flightMode = CopterMode.values()[customMode].toString()
+                        armed = (baseMode and 128) != 0
+                        if(armed){
+                            _setDroneStatus(Status.Armed.name)
+                        }
                     }
                     if(message.payload is GpsRawInt){
                         var gpsMsg : GpsRawInt = message.payload as GpsRawInt
@@ -217,18 +224,10 @@ class DroneService : Service() {
                     }
                     if(message.payload is CommandAck){
                         var ackMsg : CommandAck = message.payload as CommandAck
-                        Log.d("armg","$ackMsg")
                         if(ackMsg.command().value() == 400){
-                            if (flag == 1){
-                                if (ackMsg.result().value() == 0){
-                                    //TODO:
-                                        // Arming command always succeeds leading to wrong ARMED status update
-                                    _setDroneStatus(Status.Armed.name)
-                                }
-                                else{
-                                    //TODO: notify user that drone couldn't arm
-                                    Log.d("armg", "Arming failed")
-                                }
+                            if (ackMsg.result().value() != 0){
+                                Log.d("armg","could not arm")
+                                //TODO: Notify user of arming/disarming failure
                             }
                         }
                     }
@@ -257,7 +256,6 @@ class DroneService : Service() {
             this.keep.set(keep)
         }
         fun getPitch() : String{
-            Log.d("lunch", "in get pitch")
             return pitch
         }
     }
@@ -279,7 +277,7 @@ class DroneService : Service() {
         unregisterReceiver(usbReceiver)
     }
 
-    fun isArmable() : Boolean{
+    private fun isArmable() : Boolean{
         Log.d("armable", "in armable")
         var intent : Intent? = null
         when{
@@ -298,19 +296,18 @@ class DroneService : Service() {
             intent = Intent(STATUS_NO_EKF)
         }*/
         if(intent != null){
-            Log.d("armable","sending ${intent.action}")
             sendBroadcast(intent)
         }
         armable = (flightMode != "COPTER_MODE_INITIALISING")
                 && (gpsFixType > 1)
                 && (ekfStatusFlags > 0)
-        if (armable){
+        /*if (armable){
             _setDroneStatus(Status.Armable.name)
-        }
+        }*/
         return armable
     }
 
-    fun changeMode(mode : Int){
+    private fun changeMode(mode : Int){
         val command : MavCmd = MavCmd.MAV_CMD_DO_SET_MODE
         val message : CommandLong = CommandLong.builder()
             .targetSystem(1)
@@ -354,9 +351,55 @@ class DroneService : Service() {
                 .build();
             try{
                 mavlinkConnection.send2(systemId, componentId, message)
+                Log.d("hrtbt","arming message sent")
             }catch (e : IOException){
 
             }
+        }
+    }
+
+    fun takeoff(altitude : Float){
+        var command : MavCmd = MavCmd.MAV_CMD_NAV_TAKEOFF
+        val message : CommandLong = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(1F)
+            .param1(0F)
+            .param3(0F)
+            .param4(0F)
+            .param5(0F)
+            .param6(0F)
+            .param7(altitude)
+            .build();
+        try{
+            mavlinkConnection.send2(systemId, componentId, message)
+        }catch (e : IOException){
+
+        }
+    }
+
+    fun land(latitude: Float? = 0F, longitude: Float? = 0F){
+        var command : MavCmd = MavCmd.MAV_CMD_NAV_LAND
+        val message : CommandLong = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(1F)
+            .param1(0F)
+            .param3(0F)
+            .param4(0F)
+            .param5(latitude!!)
+            .param6(longitude!!)
+            .param7(0F)
+            .build();
+        try{
+            mavlinkConnection.send2(systemId, componentId, message)
+            Log.d("lndg","$latitude + $longitude")
+        }catch (e : IOException){
+
         }
     }
 }
