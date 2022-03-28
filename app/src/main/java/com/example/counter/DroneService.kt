@@ -221,7 +221,7 @@ class DroneService : Service() {
                         if(armed && (droneStatus == Status.InFlight.name ||
                                     droneStatus == Status.Unarmed.name)){
                             _setDroneStatus(Status.Armed.name)
-                            _writeToDebugSpace("Arming Successful")
+                            _writeToDebugSpace("Drone Armed")
                         }
                         else if(!armed){
                             droneStatus = Status.Unarmed.name
@@ -249,13 +249,13 @@ class DroneService : Service() {
                                 }
                             }
                         }
-                        if(ackMsg.command().value() == 22){
+                        if(ackMsg.command().value() == 22 /*takeoff*/ ){
                             if (ackMsg.result().value() == 0) {
                                 droneStatus = Status.InFlight.name
                                 _setDroneStatus(Status.InFlight.name)
                             }
                         }
-                        if(ackMsg.command().value() == 21){
+                        if(ackMsg.command().value() == 21 /*landing*/){
                             if(ackMsg.result().value() == 0){
                                 droneStatus = Status.Armed.name
                             }
@@ -320,9 +320,6 @@ class DroneService : Service() {
         armable = (flightMode != "COPTER_MODE_INITIALISING")
                 && (gpsFixType > 1)
                 && (ekfStatusFlags > 0)
-        /*if (armable){
-            _setDroneStatus(Status.Armable.name)
-        }*/
         return armable
     }
 
@@ -343,6 +340,7 @@ class DroneService : Service() {
             .build();
         try{
             mavlinkConnection.send2(systemId, componentId, message)
+            _writeToDebugSpace("Drone mode changed")
         }catch (e : IOException){
 
         }
@@ -350,8 +348,7 @@ class DroneService : Service() {
 
     fun arm() {
         flag = 1
-        if(true){
-        //if(isArmable()){
+        if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
@@ -378,8 +375,7 @@ class DroneService : Service() {
     }
     fun disarm() {
         flag = 0
-        if(true){
-            //if(armed){
+        if(armed){
             val guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
@@ -398,6 +394,7 @@ class DroneService : Service() {
                 .build();
             try{
                 mavlinkConnection.send2(systemId, componentId, message)
+                _writeToDebugSpace("Sent disarming Command")
             }catch (e : IOException){
 
             }

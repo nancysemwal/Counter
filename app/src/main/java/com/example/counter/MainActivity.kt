@@ -101,13 +101,10 @@ fun MainScreen(
     , droneStatus: String, debugMessage: String
 )
 {
-    //TODO: set armable & armed from the service
-    val armable : Boolean = true
-    val armed : Boolean = false
-    /*val armed : Boolean = when(droneStatus){
+    val armed : Boolean = when(droneStatus){
         Status.Armed.name -> true
         else -> false
-    }*/
+    }
 
     Box(modifier = Modifier.fillMaxSize()){
         Column() {
@@ -129,10 +126,6 @@ fun MainScreen(
                 .padding(15.dp)
                 .align(Alignment.BottomCenter)
         ) {
-            val armButtonEnabled = when(armable){
-                true -> true
-                else -> false
-            }
             val armButtonLabel = when(armed){
                 true -> "Disarm"
                 false -> "Arm"
@@ -145,7 +138,7 @@ fun MainScreen(
                 Status.InFlight.name -> true
                 else -> false
             }
-            Button(enabled = armButtonEnabled, onClick = {
+            Button(onClick = {
                 if(droneStatus == Status.Unarmed.name) {
                     droneService?.arm()
                 }else if(droneStatus == Status.Armed.name){
@@ -168,7 +161,7 @@ fun MainScreen(
 }
 
 enum class Status {
-    Offline, Unarmed, Armable, Armed, InFlight
+    Offline, Unarmed, Armed, InFlight
 }
 
 @Composable
