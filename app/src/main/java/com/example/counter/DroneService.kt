@@ -16,6 +16,7 @@ import com.felhr.usbserial.SerialInputStream
 import com.felhr.usbserial.SerialOutputStream
 import com.felhr.usbserial.UsbSerialDevice
 import io.dronefleet.mavlink.MavlinkConnection
+import io.dronefleet.mavlink.MavlinkMessage
 import io.dronefleet.mavlink.ardupilotmega.CopterMode
 import io.dronefleet.mavlink.ardupilotmega.EkfStatusReport
 import io.dronefleet.mavlink.common.*
@@ -356,13 +357,26 @@ class DroneService : Service() {
             .command(command)
             .confirmation(0)
             .param1(1F)
-            .param1(mode.toFloat())
+            .param2(mode.toFloat())
             .param3(0F)
             .param4(0F)
             .param5(0F)
             .param6(0F)
             .param7(0F)
             .build();
+        Log.d("msgs",message.toString())
+        try{
+            mavlinkConnection.send2(systemId, componentId, message)
+        }catch (e : IOException){
+
+        }
+    }
+
+    private fun setMode(){
+        val message = SetMode.builder()
+            .targetSystem(1)
+            .baseMode(MavModeFlag.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED)
+            .customMode(CopterMode.COPTER_MODE_GUIDED.ordinal.toLong())
         try{
             mavlinkConnection.send2(systemId, componentId, message)
         }catch (e : IOException){
@@ -376,6 +390,7 @@ class DroneService : Service() {
         //if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
+            //setMode()
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
             val message : CommandLong = CommandLong.builder()
                 .targetSystem(1)
@@ -383,7 +398,7 @@ class DroneService : Service() {
                 .command(command)
                 .confirmation(0)
                 .param1(1F)
-                .param1(0F)
+                .param2(0F)
                 .param3(0F)
                 .param4(0F)
                 .param5(0F)
@@ -409,7 +424,7 @@ class DroneService : Service() {
                 .command(command)
                 .confirmation(0)
                 .param1(0F)
-                .param1(0F)
+                .param2(0F)
                 .param3(0F)
                 .param4(0F)
                 .param5(0F)
@@ -431,8 +446,8 @@ class DroneService : Service() {
             .targetComponent(0)
             .command(command)
             .confirmation(0)
-            .param1(1F)
             .param1(0F)
+            .param2(0F)
             .param3(0F)
             .param4(0F)
             .param5(0F)
@@ -440,7 +455,7 @@ class DroneService : Service() {
             .param7(altitude)
             .build();
         try{
-            mavlinkConnection.send2(systemId, componentId, message)
+            //mavlinkConnection.send2(systemId, componentId, message)
         }catch (e : IOException){
 
         }
@@ -453,8 +468,8 @@ class DroneService : Service() {
             .targetComponent(0)
             .command(command)
             .confirmation(0)
-            .param1(1F)
             .param1(0F)
+            .param2(0F)
             .param3(0F)
             .param4(0F)
             .param5(latitude)
