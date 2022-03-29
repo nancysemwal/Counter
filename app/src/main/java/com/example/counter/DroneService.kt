@@ -238,19 +238,17 @@ class DroneService : Service() {
                         val fmode = CopterMode.values()[customMode].name
                         flightMode = fmode.split("_").last()
                         Log.d("hrtbt", "basemode : $baseMode + $flightMode")
-                        //flightMode = CopterMode.values()[customMode].toString()
                         _setMode(flightMode)
                         armed = ((baseMode and 128) != 0)
-                        if(armed && (droneStatus == Status.Unarmed.name ||
-                                    droneStatus == Status.InFlight.name)){
+                        if(armed && (droneStatus == Status.Unarmed.name)){
                                         droneStatus = Status.Armed.name
                                         _setDroneStatus(droneStatus)
+                            Log.d("hrtbt","armed")
                                          _writeToDebugSpace("Drone Armed")
                         }
                         else if(!armed){
                             droneStatus = Status.Unarmed.name
                             _setDroneStatus(droneStatus)
-                            //_writeToDebugSpace("Could not arm")
                         }
                     }
                     if(message.payload is GpsRawInt){
@@ -294,12 +292,13 @@ class DroneService : Service() {
                         if(ackMsg.command().value() == 22 /*takeoff*/ ){
                             if (ackMsg.result().value() == 0) {
                                 droneStatus = Status.InFlight.name
-                                _setDroneStatus(Status.InFlight.name)
+                                _setDroneStatus(droneStatus)
                             }
                         }
                         if(ackMsg.command().value() == 21 /*landing*/){
                             if(ackMsg.result().value() == 0){
-                                droneStatus = Status.Armed.name
+                                droneStatus = Status.Landing.name
+                                _setDroneStatus(droneStatus)
                             }
                         }
                     }
@@ -386,8 +385,8 @@ class DroneService : Service() {
 
     fun arm() {
         flag = 1
-        if(true){
-        //if(isArmable()){
+        //if(true){
+        if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
             //setMode()
@@ -455,9 +454,9 @@ class DroneService : Service() {
             .param7(altitude)
             .build();
         try{
-            //mavlinkConnection.send2(systemId, componentId, message)
+            mavlinkConnection.send2(systemId, componentId, message)
         }catch (e : IOException){
-
+            _writeToDebugSpace(e.toString())
         }
     }
 
@@ -480,7 +479,7 @@ class DroneService : Service() {
             mavlinkConnection.send2(systemId, componentId, message)
             Log.d("lndg","$latitude + $longitude")
         }catch (e : IOException){
-
+            _writeToDebugSpace(e.toString())
         }
     }
 }

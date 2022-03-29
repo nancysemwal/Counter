@@ -164,7 +164,7 @@ fun MainScreen(
                 Text(text = armButtonLabel)
             }
             Button(enabled = takeoffButtonEnabled, onClick = {
-                droneService?.takeoff(10F) }) {
+                droneService?.takeoff(5F) }) {
                 Text(text = "Takeoff")
             }
             Button(enabled = landButtonEnabled, onClick = {
@@ -177,7 +177,7 @@ fun MainScreen(
 }
 
 enum class Status {
-    Offline, Unarmed, Armed, InFlight
+    Offline, Unarmed, Armed, InFlight, Landing
 }
 
 @Composable
