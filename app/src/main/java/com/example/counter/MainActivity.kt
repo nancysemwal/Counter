@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
@@ -37,6 +39,9 @@ class MainActivity : ComponentActivity() {
     private var roll = mutableStateOf("")
     private var yaw = mutableStateOf("")
     private var droneStatus = mutableStateOf(Status.Offline.name)
+    private var mode = mutableStateOf("")
+    private var gpsFix = mutableStateOf("")
+    private var satellites = mutableStateOf("")
     private var debugMessage = mutableStateOf("")
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -47,7 +52,10 @@ class MainActivity : ComponentActivity() {
             droneService?.setRoll { b -> roll.value = b }
             droneService?.setYaw { b -> yaw.value = b }
             droneService?.setDroneStatus { b -> droneStatus.value = b }
-            droneService?.writeToDebugSpace { b -> debugMessage.value = debugMessage.value + "\n" + b }
+            droneService?.setMode { b -> mode.value = b }
+            droneService?.setGpsFix { b -> gpsFix.value = b }
+            droneService?.setSatellites { b -> satellites.value = b }
+            droneService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
             isBound.value = true
             setFilters()
         }
@@ -62,7 +70,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             CounterTheme {
                 MainScreen(isBound.value, isUsbConnected.value, pitch.value,
-                    roll.value, yaw.value, droneService, droneStatus.value, debugMessage.value)
+                    roll.value, yaw.value, droneService, droneStatus.value,
+                    mode.value, gpsFix.value, satellites.value, debugMessage.value)
+
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
                     , droneService = droneService)*/
             }
@@ -98,13 +108,15 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
-    , droneStatus: String, debugMessage: String
+    , droneStatus: String, mode: String, gpxFix: String, satellites: String
+    , debugMessage: String
 )
 {
     val armed : Boolean = when(droneStatus){
         Status.Armed.name -> true
         else -> false
     }
+    val scroll = rememberScrollState()
 
     Box(modifier = Modifier.fillMaxSize()){
         Column() {
@@ -114,8 +126,12 @@ fun MainScreen(
             Text(text = "Roll : $roll")
             Text(text = "Yaw : $yaw")
             Text(text = "Drone Status : $droneStatus")
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Messages: $debugMessage")
+            Text(text = "Mode : $mode")
+            Text(text = "GPS Fix : $gpxFix")
+            Text(text = "Satellites Visible : $satellites")
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(text = "Messages: ")
+            Text(text = debugMessage, modifier = Modifier.verticalScroll(scroll))
         }
 
         Row(
@@ -127,7 +143,7 @@ fun MainScreen(
                 .align(Alignment.BottomCenter)
         ) {
             val armButtonLabel = when(armed){
-                true -> "Disarm"
+                true -> "Unarm"
                 false -> "Arm"
             }
             val takeoffButtonEnabled = when(droneStatus){

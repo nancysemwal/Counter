@@ -32,6 +32,9 @@ class DroneService : Service() {
     private var _setYaw : (String) -> Unit = {b -> {}}
     private var _setDroneStatus : (String) -> Unit = {b -> {}}
     private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
+    private var _setMode : (String) -> Unit = {b -> {}}
+    private var _setGpsFix : (String) -> Unit = {b -> {}}
+    private var _setSatellites : (String) -> Unit = {b -> {}}
 
     fun setUsbStatus(_fn: (Boolean)->Unit) {
         _setUsbStatus = _fn
@@ -55,6 +58,18 @@ class DroneService : Service() {
 
     fun setDroneStatus(_fn: (String) -> Unit){
         _setDroneStatus = _fn
+    }
+
+    fun setMode(_fn: (String) -> Unit){
+        _setMode = _fn
+    }
+
+    fun setGpsFix(_fn: (String) -> Unit){
+        _setGpsFix = _fn
+    }
+
+    fun setSatellites(_fn: (String) -> Unit){
+        _setSatellites = _fn
     }
 
     fun writeToDebugSpace(_fn: (String) -> Unit){
@@ -102,6 +117,9 @@ class DroneService : Service() {
                     _setRoll("")
                     _setYaw("")
                     _setDroneStatus("")
+                    _setMode("")
+                    _setGpsFix("")
+                    _setSatellites("")
                     _writeToDebugSpace("")
                     droneStatus = ""
                     serialPortConnected = false
@@ -135,6 +153,7 @@ class DroneService : Service() {
     private var armed : Boolean = false
     private var flightMode : String = ""
     private var gpsFixType : Int = -1
+    private var satellites : String = ""
     private var ekfStatusFlags : Int = -1
     private var droneStatus : String = ""
     val STATUS_NO_GPS = "com.nancy.dronestatus.NO_GPS"
@@ -212,38 +231,60 @@ class DroneService : Service() {
                         _setYaw(attitudeMsg.yaw().toString())
                     }
                     if(message.payload is Heartbeat){
-                        var heartbeatMsg : Heartbeat = message.payload as Heartbeat
-                        var customMode : Int = heartbeatMsg.customMode().toInt()
-                        var baseMode = heartbeatMsg.baseMode().value()
-                        Log.d("hrtbt", "basemode : $baseMode")
-                        flightMode = CopterMode.values()[customMode].toString()
-                        armed = (baseMode and 128) != 0
-                        if(armed && (droneStatus == Status.InFlight.name ||
-                                    droneStatus == Status.Unarmed.name)){
-                            _setDroneStatus(Status.Armed.name)
-                            _writeToDebugSpace("Drone Armed")
+                        val heartbeatMsg : Heartbeat = message.payload as Heartbeat
+                        val customMode : Int = heartbeatMsg.customMode().toInt()
+                        val baseMode = heartbeatMsg.baseMode().value()
+                        val fmode = CopterMode.values()[customMode].name
+                        flightMode = fmode.split("_").last()
+                        Log.d("hrtbt", "basemode : $baseMode + $flightMode")
+                        //flightMode = CopterMode.values()[customMode].toString()
+                        _setMode(flightMode)
+                        armed = ((baseMode and 128) != 0)
+                        if(armed && (droneStatus == Status.Unarmed.name ||
+                                    droneStatus == Status.InFlight.name)){
+                                        droneStatus = Status.Armed.name
+                                        _setDroneStatus(droneStatus)
+                                         _writeToDebugSpace("Drone Armed")
                         }
                         else if(!armed){
                             droneStatus = Status.Unarmed.name
                             _setDroneStatus(droneStatus)
+                            //_writeToDebugSpace("Could not arm")
                         }
                     }
                     if(message.payload is GpsRawInt){
-                        var gpsMsg : GpsRawInt = message.payload as GpsRawInt
+                        val gpsMsg : GpsRawInt = message.payload as GpsRawInt
                         gpsFixType = gpsMsg.fixType().value()
+                        satellites = gpsMsg.satellitesVisible().toString()
+                        _setGpsFix(gpsFixType.toString())
+                        _setSatellites(satellites)
                     }
                     if(message.payload is EkfStatusReport){
-                        var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
+                        val ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
                         ekfStatusFlags = ekfMsg.flags().value() and 512
                     }
+                    if (message.payload is Statustext){
+                        val statusTextMsg : Statustext = message.payload as Statustext
+                        val level : String = statusTextMsg.severity().entry().toString().split("_").last()
+                        val logMsg : String = statusTextMsg.text()
+                        if(level == "CRITICAL" || level == "WARNING") {
+                            _writeToDebugSpace("$level $logMsg")
+                        }
+                        Log.d("ststxt","$level + $logMsg")
+                    }
                     if(message.payload is CommandAck){
-                        var ackMsg : CommandAck = message.payload as CommandAck
-                        if(ackMsg.command().value() == 400){
-                            if(flag == 1){
+                        val ackMsg : CommandAck = message.payload as CommandAck
+                        val command : String = ackMsg.command().entry().name
+                        val result : String = ackMsg.result().entry().name
+                        val reply = "$command sent\n$result"
+                        Log.d("rply","$reply")
+                        _writeToDebugSpace(reply)
+                        if(ackMsg.command().value() == 400 /*arm/disarm*/ ){
+                            if(flag == 1 /*arm*/ ){
                                 if (ackMsg.result().value() != 0){
-                                    _writeToDebugSpace("Could not arm")
+                                    //_writeToDebugSpace("Could not arm")
                                 }
-                            }else if(flag == 0){
+                            }else if(flag == 0 /*disarm*/){
                                 if(ackMsg.result().value() == 0){
                                     droneStatus = Status.Unarmed.name
                                 }
@@ -261,22 +302,6 @@ class DroneService : Service() {
                             }
                         }
                     }
-                    /*if(message.payload is EkfStatusReport){
-                        var ekfMsg : EkfStatusReport = message.payload as EkfStatusReport
-                        var castToEKF = EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS as MavlinkEnum
-                        //var x = castToEkf as MavlinkEnum
-                        //if ekfMsg.flags().value()
-                        //var x = EkfStatusFlags.values()[castToEKF]
-                        //x.
-                        //as MavlinkEntryInfo
-                        Log.d("ekf","$ekfMsg + ${ekfMsg.flags().value()} + $castToEKF")
-
-                        //var x : EkfStatusFlags = ekfMsg.flags().value() as EkfStatusFlags
-                        //var y = (x == EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS)
-                        //Log.d("ekf","$ekfMsg + $x + $y")
-
-                        //ekfStatusFlags = (x == EkfStatusFlags.EKF_PRED_POS_HORIZ_ABS)
-                    }*/
                 }catch (e : IOException){
                     Log.d("xxception", "hello")
                 }
@@ -340,7 +365,6 @@ class DroneService : Service() {
             .build();
         try{
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("Drone mode changed")
         }catch (e : IOException){
 
         }
@@ -348,7 +372,8 @@ class DroneService : Service() {
 
     fun arm() {
         flag = 1
-        if(isArmable()){
+        if(true){
+        //if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
@@ -367,7 +392,6 @@ class DroneService : Service() {
                 .build();
             try{
                 mavlinkConnection.send2(systemId, componentId, message)
-                _writeToDebugSpace("Sent Arming Command")
             }catch (e : IOException){
 
             }
@@ -394,7 +418,6 @@ class DroneService : Service() {
                 .build();
             try{
                 mavlinkConnection.send2(systemId, componentId, message)
-                _writeToDebugSpace("Sent disarming Command")
             }catch (e : IOException){
 
             }
