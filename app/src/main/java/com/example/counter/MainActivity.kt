@@ -1,12 +1,19 @@
 package com.example.counter
 
 import android.content.*
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,7 +39,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.N)
+    val locationPermissionRequest = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        permissions ->
+        when {
+            permissions.getOrDefault(android.Manifest.permission.ACCESS_FINE_LOCATION, false) -> {
+                Log.d("lctn", "Precise granted")
+            }
+            permissions.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
+                Log.d("lctn", "Approximate granted")
+            } else ->{
+                Log.d("lctn", "No location granted")
+            }
+        }
+    }
+
+
     private var droneService : DroneService? = null
+    private var locationService : LocationService? = null
     private var isBound = mutableStateOf(false)
     private var isUsbConnected = mutableStateOf(false)
     private var pitch = mutableStateOf("")
@@ -43,10 +69,20 @@ class MainActivity : ComponentActivity() {
     private var gpsFix = mutableStateOf("")
     private var satellites = mutableStateOf("")
     private var debugMessage = mutableStateOf("")
+    val locationManager by lazy{
+        getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    }
+    val locationListener = LocationListener{
+        fun onLocationChanged(location : Location){
+            val longitude = location.longitude
+            val latitude = location.latitude
+        }
+    }
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as DroneService.DroneBinder
-            droneService = binder.getService()
+            val droneBinder = service as DroneService.DroneBinder
+            droneService = droneBinder.getService()
             droneService?.setUsbStatus { b -> isUsbConnected.value = b }
             droneService?.setPitch { b -> pitch.value = b }
             droneService?.setRoll { b -> roll.value = b }
@@ -65,13 +101,27 @@ class MainActivity : ComponentActivity() {
         }
 
     }
+
+    private val locationServiceConnection = object : ServiceConnection{
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val locationBinder = service as LocationService.LocationBinder
+            locationService = locationBinder.getService()
+            locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
+            Log.d("srvc","from main, location service connected")
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d("srvc","location service disconnected")
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
                 MainScreen(isBound.value, isUsbConnected.value, pitch.value,
                     roll.value, yaw.value, droneService, droneStatus.value,
-                    mode.value, gpsFix.value, satellites.value, debugMessage.value)
+                    mode.value, gpsFix.value, satellites.value, debugMessage.value,
+                locationPermissionRequest, locationService)
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
                     , droneService = droneService)*/
@@ -84,11 +134,15 @@ class MainActivity : ComponentActivity() {
         Intent(this, DroneService::class.java).also { intent ->
             bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
+        Intent(this, LocationService::class.java).also { intent ->
+            bindService(intent, locationServiceConnection, Context.BIND_AUTO_CREATE)
+        }
     }
 
     override fun onStop() {
         super.onStop()
         unbindService(serviceConnection)
+        unbindService(locationServiceConnection)
         droneService?.onDestroy()
         isBound.value = false
         droneService?.setBoundStatus { b -> isBound.value = false }
@@ -109,7 +163,8 @@ fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
-    , debugMessage: String
+    , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>,
+    locationService: LocationService?
 )
 {
     val armed : Boolean = when(droneStatus){
@@ -118,7 +173,8 @@ fun MainScreen(
     }
     val scroll = rememberScrollState()
 
-    Box(modifier = Modifier.fillMaxSize()){
+    Box(modifier = Modifier.fillMaxSize())
+    {
         Column() {
             Text(text = "Service Connected : $isBound")
             Text(text = "USB Connected : $isConnected")
@@ -132,6 +188,29 @@ fun MainScreen(
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = "Messages: ")
             Text(text = debugMessage, modifier = Modifier.verticalScroll(scroll))
+        }
+
+        //TODO: Position this button just above the drone control buttons
+        val comeButtonEnabled : Boolean = when(droneStatus){
+            Status.Offline.name -> false
+            else -> true
+        }
+        Row(modifier = Modifier
+            .padding(15.dp)
+            .align(Alignment.CenterEnd)){
+            Button(enabled = comeButtonEnabled, onClick = {
+                locationPermissionRequest.launch(arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ))
+                val location = locationService?.getLocation()
+                Log.d("lctnmain", location.toString())
+                if (location != null) {
+                    droneService?.gotoLocation2(location)
+                }
+            }) {
+                Text(text = "Come")
+            }
         }
 
         Row(

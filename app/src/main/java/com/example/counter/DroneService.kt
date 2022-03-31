@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.location.Location
 import android.os.Binder
 import android.os.IBinder
 import android.util.Log
@@ -16,7 +17,6 @@ import com.felhr.usbserial.SerialInputStream
 import com.felhr.usbserial.SerialOutputStream
 import com.felhr.usbserial.UsbSerialDevice
 import io.dronefleet.mavlink.MavlinkConnection
-import io.dronefleet.mavlink.MavlinkMessage
 import io.dronefleet.mavlink.ardupilotmega.CopterMode
 import io.dronefleet.mavlink.ardupilotmega.EkfStatusReport
 import io.dronefleet.mavlink.common.*
@@ -157,6 +157,8 @@ class DroneService : Service() {
     private var satellites : String = ""
     private var ekfStatusFlags : Int = -1
     private var droneStatus : String = ""
+    /*private var groundSpeed : Float = 0F
+    private var airSpeed : Float = 0F*/
     val STATUS_NO_GPS = "com.nancy.dronestatus.NO_GPS"
     val STATUS_NO_EKF = "com.nancy.dronestatus.NO_EKF"
     val STATUS_NO_FLIGHTMODE = "com.nancy.dronestatus.NO_FLIGHTMODE"
@@ -302,6 +304,17 @@ class DroneService : Service() {
                             }
                         }
                     }
+                    if(message.payload is MissionAck){
+                        val ackMsg : MissionAck = message.payload as MissionAck
+                        val result : String = ackMsg.type().entry().name
+                        _writeToDebugSpace(result)
+                    }
+                    if(message.payload is VfrHud){
+                        val vfrHudMsg : VfrHud = message.payload as VfrHud
+                        val groundSpeed = vfrHudMsg.groundspeed()
+                        val airSpeed = vfrHudMsg.airspeed()
+                        Log.d("vfrhud", "$groundSpeed $airSpeed")
+                    }
                 }catch (e : IOException){
                     Log.d("xxception", "hello")
                 }
@@ -371,17 +384,6 @@ class DroneService : Service() {
         }
     }
 
-    private fun setMode(){
-        val message = SetMode.builder()
-            .targetSystem(1)
-            .baseMode(MavModeFlag.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED)
-            .customMode(CopterMode.COPTER_MODE_GUIDED.ordinal.toLong())
-        try{
-            mavlinkConnection.send2(systemId, componentId, message)
-        }catch (e : IOException){
-
-        }
-    }
 
     fun arm() {
         flag = 1
@@ -389,7 +391,6 @@ class DroneService : Service() {
         if(isArmable()){
             var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
-            //setMode()
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
             val message : CommandLong = CommandLong.builder()
                 .targetSystem(1)
@@ -480,6 +481,119 @@ class DroneService : Service() {
             Log.d("lndg","$latitude + $longitude")
         }catch (e : IOException){
             _writeToDebugSpace(e.toString())
+        }
+    }
+
+    fun gotoLocation(location: Location){
+        val altitude = location.altitude
+        val latitude = location.latitude
+        val longitude = location.longitude
+        val command = MavCmd.MAV_CMD_NAV_WAYPOINT
+        val message : CommandLong = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(0F)
+            .param2(0F)
+            .param3(0F)
+            .param4(0F)
+            .param5(latitude.toFloat())
+            .param6(longitude.toFloat())
+            .param7(altitude.toFloat())
+            .build()
+        try {
+            mavlinkConnection.send2(systemId, componentId, message)
+            Log.d("wpt","goto message sent $message")
+        }catch (e : IOException){
+
+        }
+    }
+
+    private fun setAirSpeed(airSpeed: Float){
+        val speedType = 0F //airspeed
+        val command : MavCmd = MavCmd.MAV_CMD_DO_CHANGE_SPEED
+        val message = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(speedType)
+            .param2(airSpeed)
+            .param3(-1F) //throttle, indicates no change
+            .param4(0F)
+            .param5(0F)
+            .param6(0F)
+            .param7(0F)
+            .build();
+        try {
+            mavlinkConnection.send2(systemId, componentId, message)
+            _writeToDebugSpace("speed changed to $airSpeed m/s")
+        }catch (e : IOException){
+
+        }
+    }
+
+    private fun setGroundSpeed(groundSpeed: Float){
+        val speedType = 1F //groundspeed
+        val command : MavCmd = MavCmd.MAV_CMD_DO_CHANGE_SPEED
+        val message = CommandLong.builder()
+            .targetSystem(1)
+            .targetComponent(0)
+            .command(command)
+            .confirmation(0)
+            .param1(speedType)
+            .param2(groundSpeed)
+            .param3(-1F) //throttle, indicates no change
+            .param4(0F)
+            .param5(0F)
+            .param6(0F)
+            .param7(0F)
+            .build();
+        try {
+            mavlinkConnection.send2(systemId, componentId, message)
+            _writeToDebugSpace("speed changed to $groundSpeed m/s")
+        }catch (e : IOException){
+
+        }
+    }
+
+    fun gotoLocation2(
+        location: Location,
+        groundSpeed: Float? = null, airSpeed: Float? = 1.0F ){
+        if(groundSpeed != null){
+            setGroundSpeed(groundSpeed)
+        }
+        if(airSpeed != null){
+            setAirSpeed(airSpeed)
+        }
+        val frame = MavFrame.MAV_FRAME_GLOBAL_INT //try relative alt also
+        val altitude = location.altitude
+        val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
+        val longitude : Int = (location.longitude * 10000000).toInt()
+        val command = MavCmd.MAV_CMD_NAV_WAYPOINT
+        val message : MissionItemInt = MissionItemInt.builder()  //try mission item also
+            .targetSystem(1)
+            .targetComponent(0)
+            .seq(0)
+            .frame(frame)
+            .command(command)
+            .current(0) //try 1 also
+            .autocontinue(0)
+            .param1(0F)
+            .param2(0F)
+            .param3(0F)
+            .param4(0F)
+            .x(latitude)
+            .y(longitude)
+            .z(altitude.toFloat())
+            .missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
+            .build()
+        try {
+            mavlinkConnection.send2(systemId, componentId, message)
+            Log.d("wpt","$message")
+        }catch (e : IOException){
+
         }
     }
 }
