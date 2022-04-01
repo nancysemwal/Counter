@@ -68,16 +68,10 @@ class MainActivity : ComponentActivity() {
     private var mode = mutableStateOf("")
     private var gpsFix = mutableStateOf("")
     private var satellites = mutableStateOf("")
+    private var latitude = mutableStateOf("")
+    private var longitude = mutableStateOf("")
+    private var hAcc = mutableStateOf("")
     private var debugMessage = mutableStateOf("")
-    val locationManager by lazy{
-        getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    }
-    val locationListener = LocationListener{
-        fun onLocationChanged(location : Location){
-            val longitude = location.longitude
-            val latitude = location.latitude
-        }
-    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -107,6 +101,9 @@ class MainActivity : ComponentActivity() {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
+            locationService?.setLatitude { b -> latitude.value = b }
+            locationService?.setLongitude { b -> longitude.value = b }
+            locationService?.setHAccMts { b -> hAcc.value = b }
             Log.d("srvc","from main, location service connected")
         }
 
@@ -118,10 +115,24 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             CounterTheme {
-                MainScreen(isBound.value, isUsbConnected.value, pitch.value,
-                    roll.value, yaw.value, droneService, droneStatus.value,
-                    mode.value, gpsFix.value, satellites.value, debugMessage.value,
-                locationPermissionRequest, locationService)
+                MainScreen(
+                    isBound.value,
+                    isUsbConnected.value,
+                    pitch.value,
+                    roll.value,
+                    yaw.value,
+                    droneService,
+                    droneStatus.value,
+                    mode.value,
+                    gpsFix.value,
+                    satellites.value,
+                    debugMessage.value,
+                    locationPermissionRequest,
+                    locationService,
+                    latitude.value,
+                    longitude.value,
+                    hAcc.value
+                )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
                     , droneService = droneService)*/
@@ -163,8 +174,9 @@ fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
-    , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>,
-    locationService: LocationService?
+    , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>
+    , locationService: LocationService?, latitude: String
+    , longitude: String, hAcc: String
 )
 {
     val armed : Boolean = when(droneStatus){
@@ -185,6 +197,9 @@ fun MainScreen(
             Text(text = "Mode : $mode")
             Text(text = "GPS Fix : $gpxFix")
             Text(text = "Satellites Visible : $satellites")
+            Text(text = "Latitude: $latitude")
+            Text(text = "Longitude: $longitude")
+            Text(text = "hAcc: $hAcc meters")
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = "Messages: ")
             Text(text = debugMessage, modifier = Modifier.verticalScroll(scroll))
@@ -204,7 +219,6 @@ fun MainScreen(
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
                 ))
                 val location = locationService?.getLocation()
-                Log.d("lctnmain", location.toString())
                 if (location != null) {
                     droneService?.gotoLocation2(location)
                 }

@@ -19,8 +19,8 @@ class LocationService : Service(), LocationListener {
     private var _setBoundStatus : (Boolean) -> Unit = {_ -> {}}
     private var _setLatitude : (String) -> Unit = {_ -> {}}
     private var _setLongitude : (String) -> Unit = {_ -> {}}
-    private var _setSource : (String) -> Unit = {_ -> {}}
-    private var _writeToDebugSpace : (String) -> Unit = {_ -> {}}
+    private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
+    private var _setHAccMts : (String) -> Unit = {b -> {}}
 
     fun setBoundStatus(_fn : (Boolean) -> Unit){
         _setBoundStatus = _fn
@@ -32,11 +32,11 @@ class LocationService : Service(), LocationListener {
     fun setLongitude(_fn : (String) -> Unit){
         _setLongitude = _fn
     }
-    fun setSource(_fn: (String) -> Unit){
-        _setSource = _fn
-    }
     fun writeToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
+    }
+    fun setHAccMts(_fn: (String) -> Unit){
+        _setHAccMts = _fn
     }
     private val binder = LocationBinder()
 
@@ -52,6 +52,7 @@ class LocationService : Service(), LocationListener {
 
     override fun onCreate(){
         super.onCreate()
+        Log.d("srvc","service's onCreate()")
         _setBoundStatus(true)
     }
 
@@ -59,56 +60,68 @@ class LocationService : Service(), LocationListener {
         isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
         isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         if(!isGPSEnabled && !isNetworkEnabled){
-            Log.d("lctn","No provider enabled")
+            _writeToDebugSpace("No provider enabled")
         }else{
             if(isNetworkEnabled){
+                //_writeToDebugSpace("Network enabled")
                 if(ActivityCompat.checkSelfPermission(this,
                         Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                     &&
                     ActivityCompat.checkSelfPermission(this,
                         Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+                    _writeToDebugSpace("No permissions")
                 }else{
                     locationManager.requestLocationUpdates(
                         LocationManager.NETWORK_PROVIDER,
-                        5000,
-                        1F,
+                        2000,
+                        10F,
                         this
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
                     if(location != null){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
-                        _setLatitude(latitude.toString())
-                        _setLongitude(longitude.toString())
-                        Log.d("lctn", "Going to ${location?.latitude}, ${location?.longitude}")
-                        _writeToDebugSpace("Going to ${location?.latitude}, ${location?.longitude}")
+                        _setLatitude("$latitude")
+                        _setLongitude("$longitude")
+                        _setHAccMts(location!!.accuracy.toString())
+                        _writeToDebugSpace("Location provided by ${location!!.provider}")
                     }
-                    Log.d("lctn","From network $location")
                 }
-                return location
+            }
+            else{
+                _writeToDebugSpace("N/W not enabled")
             }
             if(isGPSEnabled) {
+                //_writeToDebugSpace("GPS enabled")
                 if(ActivityCompat.checkSelfPermission(this,
                         Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                     &&
                     ActivityCompat.checkSelfPermission(this,
                         Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+                    _writeToDebugSpace("No permissions")
                 }else{
+                    locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        2000,
+                        10F,
+                        this
+                    )
+                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                     if(location != null){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
-                        _setLatitude(latitude.toString())
-                        _setLongitude(longitude.toString())
-                        Log.d("lctn", "Going to ${location?.latitude}, ${location?.longitude}")
-                        _writeToDebugSpace("Going to ${location?.latitude}, ${location?.longitude}")
+                        _setLatitude("$latitude")
+                        _setLongitude("$longitude")
+                        _setHAccMts(location!!.accuracy.toString())
+                        _writeToDebugSpace("Location provided by ${location!!.provider}")
                     }
-                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    Log.d("lctn","from GPS $location")
-                    return location
                 }
             }
+            else{
+                _writeToDebugSpace("GPS not enabled")
+            }
         }
-        //TODO: write to debug space only once
+        //TODO: Return location if hAcc >= 5
         return location
     }
 
@@ -122,12 +135,12 @@ class LocationService : Service(), LocationListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (ActivityCompat.checkSelfPermission(
+        /*if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED) {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0F, this)
-        }
+        }*/
         return START_NOT_STICKY
     }
 
@@ -136,7 +149,8 @@ class LocationService : Service(), LocationListener {
         longitude = location.longitude
         _setLatitude(latitude.toString())
         _setLongitude(longitude.toString())
-        Log.d("lctn", "from onLocationChanged $location")
+        _setHAccMts(location!!.accuracy.toString())
+        _writeToDebugSpace("Location updated by ${location.provider}")
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
