@@ -278,7 +278,7 @@ class DroneService : Service() {
                         val command : String = ackMsg.command().entry().name
                         val result : String = ackMsg.result().entry().name
                         val reply = "$command sent\n$result"
-                        Log.d("rply","$reply")
+                        Log.d("rply", reply)
                         _writeToDebugSpace(reply)
                         if(ackMsg.command().value() == 400 /*arm/disarm*/ ){
                             if(flag == 1 /*arm*/ ){
@@ -528,7 +528,7 @@ class DroneService : Service() {
             .build();
         try {
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("speed changed to $airSpeed m/s")
+            _writeToDebugSpace("Air speed changed to $airSpeed m/s")
         }catch (e : IOException){
 
         }
@@ -552,7 +552,7 @@ class DroneService : Service() {
             .build();
         try {
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("speed changed to $groundSpeed m/s")
+            _writeToDebugSpace("Ground speed changed to $groundSpeed m/s")
         }catch (e : IOException){
 
         }
