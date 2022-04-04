@@ -184,6 +184,9 @@ fun MainScreen(
         else -> false
     }
     val scroll = rememberScrollState()
+    val locationState = remember {
+        mutableStateOf(Location(LocationManager.GPS_PROVIDER))
+    }
 
     Box(modifier = Modifier.fillMaxSize())
     {
@@ -219,6 +222,7 @@ fun MainScreen(
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
                 ))
                 val location = locationService?.getLocation()
+                Log.d("rtrn","$location")
                 if (location != null) {
                     droneService?.gotoLocation2(location)
                 }

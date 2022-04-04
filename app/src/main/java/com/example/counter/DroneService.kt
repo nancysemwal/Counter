@@ -239,7 +239,6 @@ class DroneService : Service() {
                         val baseMode = heartbeatMsg.baseMode().value()
                         val fmode = CopterMode.values()[customMode].name
                         flightMode = fmode.split("_").last()
-                        Log.d("hrtbt", "basemode : $baseMode + $flightMode")
                         _setMode(flightMode)
                         armed = ((baseMode and 128) != 0)
                         if(armed && (droneStatus == Status.Unarmed.name)){
@@ -561,39 +560,47 @@ class DroneService : Service() {
     fun gotoLocation2(
         location: Location,
         groundSpeed: Float? = null, airSpeed: Float? = 1.0F ){
-        if(groundSpeed != null){
-            setGroundSpeed(groundSpeed)
-        }
-        if(airSpeed != null){
-            setAirSpeed(airSpeed)
-        }
-        val frame = MavFrame.MAV_FRAME_GLOBAL_INT //try relative alt also
-        val altitude = location.altitude
-        val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
-        val longitude : Int = (location.longitude * 10000000).toInt()
-        val command = MavCmd.MAV_CMD_NAV_WAYPOINT
-        val message : MissionItemInt = MissionItemInt.builder()  //try mission item also
-            .targetSystem(1)
-            .targetComponent(0)
-            .seq(0)
-            .frame(frame)
-            .command(command)
-            .current(0) //try 1 also
-            .autocontinue(0)
-            .param1(0F)
-            .param2(0F)
-            .param3(0F)
-            .param4(0F)
-            .x(latitude)
-            .y(longitude)
-            .z(altitude.toFloat())
-            .missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
-            .build()
-        try {
-            mavlinkConnection.send2(systemId, componentId, message)
-            Log.d("wpt","$message")
-        }catch (e : IOException){
 
+        if(location.accuracy > 5){
+            _writeToDebugSpace("Location accuracy > 5 meters. Drone won't proceed")
+            return
+        }
+        else{
+            _writeToDebugSpace("Proceeding to coordinates")
+            if(groundSpeed != null){
+                setGroundSpeed(groundSpeed)
+            }
+            if(airSpeed != null){
+                setAirSpeed(airSpeed)
+            }
+            val frame = MavFrame.MAV_FRAME_GLOBAL_INT //try relative alt also
+            val altitude = location.altitude
+            val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
+            val longitude : Int = (location.longitude * 10000000).toInt()
+            val command = MavCmd.MAV_CMD_NAV_WAYPOINT
+            val message : MissionItemInt = MissionItemInt.builder()  //try mission item also
+                .targetSystem(1)
+                .targetComponent(0)
+                .seq(0)
+                .frame(frame)
+                .command(command)
+                .current(0) //try 1 also
+                .autocontinue(0)
+                .param1(0F)
+                .param2(0F)
+                .param3(0F)
+                .param4(0F)
+                .x(latitude)
+                .y(longitude)
+                .z(altitude.toFloat())
+                .missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
+                .build()
+            try {
+                mavlinkConnection.send2(systemId, componentId, message)
+                Log.d("wpt","$message")
+            }catch (e : IOException){
+
+            }
         }
     }
 }

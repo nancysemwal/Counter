@@ -52,16 +52,44 @@ class LocationService : Service(), LocationListener {
 
     override fun onCreate(){
         super.onCreate()
-        Log.d("srvc","service's onCreate()")
         _setBoundStatus(true)
     }
 
-    fun getLocation() : Location? {
+    fun getLocation(): Location? {
         isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
         isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         if(!isGPSEnabled && !isNetworkEnabled){
             _writeToDebugSpace("No provider enabled")
         }else{
+            if(isGPSEnabled) {
+                //_writeToDebugSpace("GPS enabled")
+                if(ActivityCompat.checkSelfPermission(this,
+                        Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                    &&
+                    ActivityCompat.checkSelfPermission(this,
+                        Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+                    _writeToDebugSpace("No permissions")
+                }else{
+                    locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        5000,
+                        10F,
+                        this
+                    )
+                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    if(location != null){
+                        latitude = location!!.latitude
+                        longitude = location!!.longitude
+                        _setLatitude("$latitude")
+                        _setLongitude("$longitude")
+                        _setHAccMts(location!!.accuracy.toString())
+                        _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
+                    }
+                }
+            }
+            else{
+                _writeToDebugSpace("GPS not enabled")
+            }
             if(isNetworkEnabled){
                 //_writeToDebugSpace("Network enabled")
                 if(ActivityCompat.checkSelfPermission(this,
@@ -78,50 +106,21 @@ class LocationService : Service(), LocationListener {
                         this
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
                     if(location != null){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
                         _setLatitude("$latitude")
                         _setLongitude("$longitude")
                         _setHAccMts(location!!.accuracy.toString())
-                        _writeToDebugSpace("Location provided by ${location!!.provider}")
+                        _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
                     }
                 }
             }
             else{
                 _writeToDebugSpace("N/W not enabled")
             }
-            if(isGPSEnabled) {
-                //_writeToDebugSpace("GPS enabled")
-                if(ActivityCompat.checkSelfPermission(this,
-                        Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-                    &&
-                    ActivityCompat.checkSelfPermission(this,
-                        Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
-                    _writeToDebugSpace("No permissions")
-                }else{
-                    locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
-                        2000,
-                        10F,
-                        this
-                    )
-                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    if(location != null){
-                        latitude = location!!.latitude
-                        longitude = location!!.longitude
-                        _setLatitude("$latitude")
-                        _setLongitude("$longitude")
-                        _setHAccMts(location!!.accuracy.toString())
-                        _writeToDebugSpace("Location provided by ${location!!.provider}")
-                    }
-                }
-            }
-            else{
-                _writeToDebugSpace("GPS not enabled")
-            }
         }
-        //TODO: Return location if hAcc >= 5
         return location
     }
 
@@ -149,8 +148,8 @@ class LocationService : Service(), LocationListener {
         longitude = location.longitude
         _setLatitude(latitude.toString())
         _setLongitude(longitude.toString())
-        _setHAccMts(location!!.accuracy.toString())
-        _writeToDebugSpace("Location updated by ${location.provider}")
+        _setHAccMts(location.accuracy.toString())
+        _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location!!.accuracy}")
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
