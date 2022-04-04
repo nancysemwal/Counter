@@ -45,6 +45,7 @@ class LocationService : Service(), LocationListener {
     private var location : Location? = null
     private var latitude = 0.0
     private var longitude = 0.0
+    private var hAccuracy = 10000F
 
     private val locationManager : LocationManager by lazy {
         getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -77,7 +78,7 @@ class LocationService : Service(), LocationListener {
                         this
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    if(location != null){
+                    if(location != null && location!!.accuracy < hAccuracy){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
                         _setLatitude("$latitude")
@@ -107,7 +108,7 @@ class LocationService : Service(), LocationListener {
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
 
-                    if(location != null){
+                    if(location != null && location!!.accuracy < hAccuracy){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
                         _setLatitude("$latitude")
@@ -149,7 +150,7 @@ class LocationService : Service(), LocationListener {
         _setLatitude(latitude.toString())
         _setLongitude(longitude.toString())
         _setHAccMts(location.accuracy.toString())
-        _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location!!.accuracy}")
+        _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location.accuracy}")
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
