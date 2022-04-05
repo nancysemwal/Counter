@@ -19,6 +19,7 @@ class LocationService : Service(), LocationListener {
     private var _setBoundStatus : (Boolean) -> Unit = {_ -> {}}
     private var _setLatitude : (String) -> Unit = {_ -> {}}
     private var _setLongitude : (String) -> Unit = {_ -> {}}
+    private var _setAltitude: (String) -> Unit = {_ -> {}}
     private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
     private var _setHAccMts : (String) -> Unit = {b -> {}}
 
@@ -31,6 +32,9 @@ class LocationService : Service(), LocationListener {
     }
     fun setLongitude(_fn : (String) -> Unit){
         _setLongitude = _fn
+    }
+    fun setAltitude(_fn: (String) -> Unit){
+        _setAltitude = _fn
     }
     fun writeToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
@@ -45,6 +49,7 @@ class LocationService : Service(), LocationListener {
     private var location : Location? = null
     private var latitude = 0.0
     private var longitude = 0.0
+    private var altitude = -1.0
     private var hAccuracy = 10000F
 
     private val locationManager : LocationManager by lazy {
@@ -81,8 +86,10 @@ class LocationService : Service(), LocationListener {
                     if(location != null && location!!.accuracy < hAccuracy){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
+                        altitude = location!!.altitude
                         _setLatitude("$latitude")
                         _setLongitude("$longitude")
+                        _setAltitude("$altitude")
                         _setHAccMts(location!!.accuracy.toString())
                         _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
                     }
@@ -91,6 +98,7 @@ class LocationService : Service(), LocationListener {
             else{
                 _writeToDebugSpace("GPS not enabled")
             }
+            /*
             if(isNetworkEnabled){
                 //_writeToDebugSpace("Network enabled")
                 if(ActivityCompat.checkSelfPermission(this,
@@ -107,7 +115,6 @@ class LocationService : Service(), LocationListener {
                         this
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-
                     if(location != null && location!!.accuracy < hAccuracy){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
@@ -121,6 +128,7 @@ class LocationService : Service(), LocationListener {
             else{
                 _writeToDebugSpace("N/W not enabled")
             }
+             */
         }
         return location
     }
@@ -145,10 +153,13 @@ class LocationService : Service(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
+        if (location.provider == LocationManager.NETWORK_PROVIDER) return;
         latitude = location.latitude
         longitude = location.longitude
-        _setLatitude(latitude.toString())
-        _setLongitude(longitude.toString())
+        altitude = location!!.altitude
+        _setLatitude("$latitude")
+        _setLongitude("$longitude")
+        _setAltitude("$altitude")
         _setHAccMts(location.accuracy.toString())
         _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location.accuracy}")
     }

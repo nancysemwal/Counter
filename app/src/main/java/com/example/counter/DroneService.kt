@@ -455,6 +455,7 @@ class DroneService : Service() {
             .build();
         try{
             mavlinkConnection.send2(systemId, componentId, message)
+            _writeToDebugSpace("Taking off with altitude value $altitude")
         }catch (e : IOException){
             _writeToDebugSpace(e.toString())
         }
@@ -561,30 +562,33 @@ class DroneService : Service() {
         location: Location,
         groundSpeed: Float? = null, airSpeed: Float? = 1.0F ){
 
-        if(location.accuracy > 5){
+        if(location.accuracy > 7){
             _writeToDebugSpace("Location accuracy > 5 meters. Drone won't proceed")
             return
         }
         else{
-            _writeToDebugSpace("Proceeding to coordinates")
+            _writeToDebugSpace("Proceeding to coordinates with altitude ${location.altitude}")
             if(groundSpeed != null){
                 setGroundSpeed(groundSpeed)
             }
             if(airSpeed != null){
                 setAirSpeed(airSpeed)
             }
-            val frame = MavFrame.MAV_FRAME_GLOBAL_INT //try relative alt also
-            val altitude = location.altitude
-            val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
-            val longitude : Int = (location.longitude * 10000000).toInt()
+            val frame = MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT //try relative alt also
+            //val altitude = location.altitude
+            val altitude = 10
+            /*val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
+            val longitude : Int = (location.longitude * 10000000).toInt()*/
+            val latitude = location.latitude.toFloat()
+            val longitude = location.longitude.toFloat()
             val command = MavCmd.MAV_CMD_NAV_WAYPOINT
-            val message : MissionItemInt = MissionItemInt.builder()  //try mission item also
+            val message : MissionItem = MissionItem.builder()  //try mission item also
                 .targetSystem(1)
                 .targetComponent(0)
                 .seq(0)
                 .frame(frame)
                 .command(command)
-                .current(0) //try 1 also
+                .current(2) //try 1 also
                 .autocontinue(0)
                 .param1(0F)
                 .param2(0F)
@@ -593,7 +597,7 @@ class DroneService : Service() {
                 .x(latitude)
                 .y(longitude)
                 .z(altitude.toFloat())
-                .missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
+                //.missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
                 .build()
             try {
                 mavlinkConnection.send2(systemId, componentId, message)

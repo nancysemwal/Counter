@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
     private var satellites = mutableStateOf("")
     private var latitude = mutableStateOf("")
     private var longitude = mutableStateOf("")
+    private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
     private var debugMessage = mutableStateOf("")
 
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
             locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
             locationService?.setLatitude { b -> latitude.value = b }
             locationService?.setLongitude { b -> longitude.value = b }
+            locationService?.setAltitude { b -> altitude.value = b}
             locationService?.setHAccMts { b -> hAcc.value = b }
             Log.d("srvc","from main, location service connected")
         }
@@ -131,6 +133,7 @@ class MainActivity : ComponentActivity() {
                     locationService,
                     latitude.value,
                     longitude.value,
+                    altitude.value,
                     hAcc.value
                 )
 
@@ -176,7 +179,7 @@ fun MainScreen(
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
     , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
-    , longitude: String, hAcc: String
+    , longitude: String, altitude: String, hAcc: String
 )
 {
     val armed : Boolean = when(droneStatus){
@@ -202,6 +205,7 @@ fun MainScreen(
             Text(text = "Satellites Visible : $satellites")
             Text(text = "Latitude: $latitude")
             Text(text = "Longitude: $longitude")
+            Text(text = "Altitude: $altitude")
             Text(text = "hAcc: $hAcc meters")
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = "Messages: ")
@@ -216,14 +220,14 @@ fun MainScreen(
         Row(modifier = Modifier
             .padding(15.dp)
             .align(Alignment.CenterEnd)){
-            Button(enabled = comeButtonEnabled, onClick = {
+            Button(/*enabled = comeButtonEnabled, */onClick = {
                 locationPermissionRequest.launch(arrayOf(
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
                 ))
                 val location = locationService?.getLocation()
-                Log.d("rtrn","$location")
                 if (location != null) {
+                    Log.d("alt","${location.altitude}")
                     droneService?.gotoLocation2(location)
                 }
             }) {
