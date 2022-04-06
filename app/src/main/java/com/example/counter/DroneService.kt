@@ -21,7 +21,10 @@ import io.dronefleet.mavlink.ardupilotmega.CopterMode
 import io.dronefleet.mavlink.ardupilotmega.EkfStatusReport
 import io.dronefleet.mavlink.common.*
 import java.io.IOException
+import java.math.RoundingMode
+import java.text.DecimalFormat
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.round
 
 class DroneService : Service() {
 
@@ -223,15 +226,20 @@ class DroneService : Service() {
     inner class ReadThread : Thread() {
         var keep: AtomicBoolean = AtomicBoolean(true)
         override fun run() {
+            val decimalFormat = DecimalFormat("#.##")
+            decimalFormat.roundingMode = RoundingMode.DOWN
             while (keep.get()){
                 try{
-                    var message = mavlinkConnection.next()
+                    val message = mavlinkConnection.next()
                     if(message.payload is Attitude){
-                        var attitudeMsg : Attitude = message.payload as Attitude
-                        pitch = attitudeMsg.pitch().toString()
-                        _setPitch(attitudeMsg.pitch().toString())
-                        _setRoll(attitudeMsg.roll().toString())
-                        _setYaw(attitudeMsg.yaw().toString())
+                        val attitudeMsg : Attitude = message.payload as Attitude
+                        pitch = decimalFormat.format(attitudeMsg.pitch()).toString()
+                        roll = decimalFormat.format(attitudeMsg.roll()).toString()
+                        yaw = decimalFormat.format(attitudeMsg.yaw()).toString()
+                        Log.d("ptch", "$pitch $roll $yaw")
+                        _setPitch(pitch)
+                        _setRoll(roll)
+                        _setYaw(yaw)
                     }
                     if(message.payload is Heartbeat){
                         val heartbeatMsg : Heartbeat = message.payload as Heartbeat
@@ -439,6 +447,7 @@ class DroneService : Service() {
     }
 
     fun takeoff(altitude : Float){
+        _writeToDebugSpace("Taking off with altitude $altitude")
         val command : MavCmd = MavCmd.MAV_CMD_NAV_TAKEOFF
         val message : CommandLong = CommandLong.builder()
             .targetSystem(1)
@@ -455,7 +464,6 @@ class DroneService : Service() {
             .build();
         try{
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("Taking off with altitude value $altitude")
         }catch (e : IOException){
             _writeToDebugSpace(e.toString())
         }
@@ -560,14 +568,16 @@ class DroneService : Service() {
 
     fun gotoLocation2(
         location: Location,
-        groundSpeed: Float? = null, airSpeed: Float? = 1.0F ){
-
-        if(location.accuracy > 7){
-            _writeToDebugSpace("Location accuracy > 5 meters. Drone won't proceed")
+        groundSpeed: Float? = null,
+        airSpeed: Float? = 1.0F
+    ){
+        val acc = 7
+        if(location.accuracy > acc){
+            _writeToDebugSpace("Location accuracy > $acc meters. Drone won't proceed")
             return
         }
         else{
-            _writeToDebugSpace("Proceeding to coordinates with altitude ${location.altitude}")
+            _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude}")
             if(groundSpeed != null){
                 setGroundSpeed(groundSpeed)
             }
@@ -575,11 +585,9 @@ class DroneService : Service() {
                 setAirSpeed(airSpeed)
             }
             val frame = MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT //try relative alt also
-            //val altitude = location.altitude
-            val altitude = 10
-            /*val latitude : Int = (location.latitude * 10000000).toInt() //try giving raw values also
-            val longitude : Int = (location.longitude * 10000000).toInt()*/
-            val latitude = location.latitude.toFloat()
+            val altitude = location.altitude.toFloat()
+            //val altitude = 10F
+            val latitude = location.latitude.toFloat() //try giving raw values also
             val longitude = location.longitude.toFloat()
             val command = MavCmd.MAV_CMD_NAV_WAYPOINT
             val message : MissionItem = MissionItem.builder()  //try mission item also
@@ -596,8 +604,7 @@ class DroneService : Service() {
                 .param4(0F)
                 .x(latitude)
                 .y(longitude)
-                .z(altitude.toFloat())
-                //.missionType(MavMissionType.MAV_MISSION_TYPE_MISSION)
+                .z(altitude)
                 .build()
             try {
                 mavlinkConnection.send2(systemId, componentId, message)
