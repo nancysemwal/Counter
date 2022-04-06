@@ -22,6 +22,7 @@ class LocationService : Service(), LocationListener {
     private var _setAltitude: (String) -> Unit = {_ -> {}}
     private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
     private var _setHAccMts : (String) -> Unit = {b -> {}}
+    private var _setLocation : (Location) -> Unit = {b -> {}}
 
     fun setBoundStatus(_fn : (Boolean) -> Unit){
         _setBoundStatus = _fn
@@ -42,6 +43,9 @@ class LocationService : Service(), LocationListener {
     fun setHAccMts(_fn: (String) -> Unit){
         _setHAccMts = _fn
     }
+    fun setLocation(_fn: (Location) -> Unit){
+        _setLocation = _fn
+    }
     private val binder = LocationBinder()
 
     var isGPSEnabled = false
@@ -59,6 +63,7 @@ class LocationService : Service(), LocationListener {
     override fun onCreate(){
         super.onCreate()
         _setBoundStatus(true)
+        getLocation()
     }
 
     fun getLocation(): Location? {
@@ -91,7 +96,9 @@ class LocationService : Service(), LocationListener {
                         _setLongitude("$longitude")
                         _setAltitude("$altitude")
                         _setHAccMts(location!!.accuracy.toString())
+                        _setLocation(location!!)
                         _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
+                        Log.d("lctn","from getLocation() $location")
                     }
                 }
             }
@@ -156,11 +163,12 @@ class LocationService : Service(), LocationListener {
         if (location.provider == LocationManager.NETWORK_PROVIDER) return;
         latitude = location.latitude
         longitude = location.longitude
-        altitude = location!!.altitude
+        altitude = location.altitude
         _setLatitude("$latitude")
         _setLongitude("$longitude")
         _setAltitude("$altitude")
         _setHAccMts(location.accuracy.toString())
+        _setLocation(location)
         _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location.accuracy}")
     }
 
