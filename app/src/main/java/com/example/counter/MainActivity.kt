@@ -2,7 +2,6 @@ package com.example.counter
 
 import android.content.*
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
@@ -18,10 +17,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Button
+import androidx.compose.material.Slider
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
 
@@ -47,6 +51,7 @@ class MainActivity : ComponentActivity() {
         when {
             permissions.getOrDefault(android.Manifest.permission.ACCESS_FINE_LOCATION, false) -> {
                 Log.d("lctn", "Precise granted")
+                //locationService?.getLocation()
             }
             permissions.getOrDefault(android.Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
                 Log.d("lctn", "Approximate granted")
@@ -73,6 +78,7 @@ class MainActivity : ComponentActivity() {
     private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
     private var debugMessage = mutableStateOf("")
+    private var location = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -106,7 +112,12 @@ class MainActivity : ComponentActivity() {
             locationService?.setLongitude { b -> longitude.value = b }
             locationService?.setAltitude { b -> altitude.value = b}
             locationService?.setHAccMts { b -> hAcc.value = b }
-            Log.d("srvc","from main, location service connected")
+            locationService?.setLocation { b -> location.value = b }
+            locationPermissionRequest.launch(arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION
+            ))
+            locationService?.getLocation()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -134,7 +145,8 @@ class MainActivity : ComponentActivity() {
                     latitude.value,
                     longitude.value,
                     altitude.value,
-                    hAcc.value
+                    hAcc.value,
+                    location.value
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -179,101 +191,196 @@ fun MainScreen(
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
     , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
-    , longitude: String, altitude: String, hAcc: String
+    , longitude: String, altitude: String, hAcc: String, location: Location?
 )
 {
-    val armed : Boolean = when(droneStatus){
-        Status.Armed.name -> true
-        else -> false
-    }
     val scroll = rememberScrollState()
-    val locationState = remember {
-        mutableStateOf(Location(LocationManager.GPS_PROVIDER))
-    }
 
     Box(modifier = Modifier.fillMaxSize())
     {
         Column() {
-            Text(text = "Service Connected : $isBound")
-            Text(text = "USB Connected : $isConnected")
-            Text(text = "Pitch : $pitch")
-            Text(text = "Roll : $roll")
-            Text(text = "Yaw : $yaw")
-            Text(text = "Drone Status : $droneStatus")
-            Text(text = "Mode : $mode")
-            Text(text = "GPS Fix : $gpxFix")
-            Text(text = "Satellites Visible : $satellites")
-            Text(text = "Latitude: $latitude")
-            Text(text = "Longitude: $longitude")
-            Text(text = "Altitude: $altitude")
+            Row(
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(5.dp)
+                    .fillMaxWidth()
+            ){
+                Text(text = "Service : $isBound")
+                Text(text = "USB : $isConnected")
+            }
+            Row(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(5.dp)
+                    .fillMaxWidth()
+            ){
+                Text(text = "Drone Status : ${droneStatus.uppercase()}")
+                Text(text = "Mode : $mode")
+            }
+            Row(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(5.dp)
+                    .fillMaxWidth()
+            ){
+                Text(text = "GPS Fix : $gpxFix")
+                Text(text = "Satellites Visible : $satellites")
+            }
+            Row(
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(0.33f)
+                ){
+                    Text(text = "Pitch: $pitch",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(0.33f)
+                ){
+                    Text(text = "Roll: $roll",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(0.33f)
+                ){
+                    Text(text = "Yaw: $yaw",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            Text(text = "Lat: $latitude")
+            Text(text = "Lon: $longitude")
+            Text(text = "Alt: $altitude")
             Text(text = "hAcc: $hAcc meters")
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(text = "Messages: ")
+            Row() {
+                Text(text = "MESSAGES ",
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center)
+            }
             Text(text = debugMessage, modifier = Modifier.verticalScroll(scroll))
         }
 
-        //TODO: Position this button just above the drone control buttons
-        val comeButtonEnabled : Boolean = when(droneStatus){
-            Status.Offline.name -> false
-            else -> true
-        }
-        Row(modifier = Modifier
-            .padding(15.dp)
-            .align(Alignment.CenterEnd)){
-            Button(/*enabled = comeButtonEnabled, */onClick = {
-                locationPermissionRequest.launch(arrayOf(
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                ))
-                val location = locationService?.getLocation()
-                if (location != null) {
-                    Log.d("alt","${location.altitude}")
-                    droneService?.gotoLocation2(location)
-                }
-            }) {
-                Text(text = "Come")
-            }
-        }
-
         Row(
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(15.dp)
-                .align(Alignment.BottomCenter)
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(15.dp)
+            .align(Alignment.BottomCenter)
         ) {
+
+            val armed : Boolean = when(droneStatus){
+                Status.Armed.name, Status.InFlight.name, Status.Landing.name -> true
+                else -> false
+            }
             val armButtonLabel = when(armed){
                 true -> "Unarm"
                 false -> "Arm"
             }
-            val takeoffButtonEnabled = when(droneStatus){
-                Status.Armed.name -> true
+            val controlsEnabled = when(droneStatus){
+                Status.Armed.name, Status.InFlight.name, Status.Landing.name -> true
                 else -> false
             }
-            val landButtonEnabled = when(droneStatus){
-                Status.InFlight.name -> true
-                else -> false
+
+            var sliderAltitude by remember {
+                mutableStateOf(5f)
             }
-            Button(onClick = {
-                if(droneStatus == Status.Unarmed.name) {
-                    droneService?.arm()
-                }else if(droneStatus == Status.Armed.name){
-                    droneService?.disarm()
+
+            Column() {
+                Row(horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ){
+                    Column() {
+                        Text(text = "Altitude: $sliderAltitude")
+                        Slider(
+                            value = sliderAltitude,
+                            onValueChange = { sliderAltitude = it },
+                            steps = 8,
+                            valueRange = 5f..50f
+                        )
+                    }
                 }
-            }) {
-                Text(text = armButtonLabel)
+                Row(
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(15.dp)
+                ){
+                    Button(onClick = {
+                        if(armButtonLabel == "Arm"){
+                            droneService?.arm()
+                        }
+                        else if(armButtonLabel == "Disarm"){
+                            droneService?.disarm()
+                        }
+                    }) {
+                        Text(text = armButtonLabel)
+                    }
+                    Button(enabled = controlsEnabled,
+                        onClick = { droneService?.takeoff(sliderAltitude) }) {
+                        Text(text = "Takeoff")
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(15.dp)
+                ) {
+                    Button(enabled = controlsEnabled,
+                        onClick = { droneService?.land() }) {
+                        Text(text = "Land")
+                    }
+                    Button(
+                        enabled = controlsEnabled,
+                        onClick = {
+                            if (location != null) {
+                                location.altitude = sliderAltitude.toDouble()
+                                droneService?.gotoLocation2(location)
+                            }
+                        }
+                    ) {
+                        Text(text = "Come")
+                    }
+                }
             }
-            Button(enabled = takeoffButtonEnabled, onClick = {
-                droneService?.takeoff(5F) }) {
-                Text(text = "Takeoff")
+
+        /*Button(onClick = {
+            if(droneStatus == Status.Unarmed.name) {
+                droneService?.arm()
+            }else if(droneStatus == Status.Armed.name){
+                droneService?.disarm()
             }
-            Button(enabled = landButtonEnabled, onClick = {
-                droneService?.land()
-            }) {
-                Text(text = "Land")
-            }
+        }) {
+            Text(text = armButtonLabel)
         }
+        Button(enabled = takeoffButtonEnabled, onClick = {
+            droneService?.takeoff(5F) }) {
+            Text(text = "Takeoff")
+        }
+        Button(enabled = landButtonEnabled, onClick = {
+            droneService?.land()
+        }) {
+            Text(text = "Land")
+        }*/
+    }
     }
 }
 
