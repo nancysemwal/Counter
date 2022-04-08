@@ -14,20 +14,25 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Button
+import androidx.compose.material.Card
 import androidx.compose.material.Slider
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
@@ -77,7 +82,8 @@ class MainActivity : ComponentActivity() {
     private var longitude = mutableStateOf("")
     private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
-    private var debugMessage = mutableStateOf("")
+    //private var debugMessage = mutableStateOf("")
+    private var debugMessage = mutableListOf<String>()
     private var location = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
 
     private val serviceConnection = object : ServiceConnection {
@@ -92,7 +98,8 @@ class MainActivity : ComponentActivity() {
             droneService?.setMode { b -> mode.value = b }
             droneService?.setGpsFix { b -> gpsFix.value = b }
             droneService?.setSatellites { b -> satellites.value = b }
-            droneService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
+            droneService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
+            //droneService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
             isBound.value = true
             setFilters()
         }
@@ -107,7 +114,8 @@ class MainActivity : ComponentActivity() {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
-            locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
+            locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
+            //locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
             locationService?.setLatitude { b -> latitude.value = b }
             locationService?.setLongitude { b -> longitude.value = b }
             locationService?.setAltitude { b -> altitude.value = b}
@@ -139,7 +147,7 @@ class MainActivity : ComponentActivity() {
                     mode.value,
                     gpsFix.value,
                     satellites.value,
-                    debugMessage.value,
+                    debugMessage,
                     locationPermissionRequest,
                     locationService,
                     latitude.value,
@@ -189,99 +197,118 @@ fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
-    , debugMessage: String, locationPermissionRequest: ActivityResultLauncher<Array<String>>
+    , debugMessage: List<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
 )
 {
     val scroll = rememberScrollState()
-
-    Box(modifier = Modifier.fillMaxSize())
-    {
-        Column() {
-            Row(
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(5.dp)
-                    .fillMaxWidth()
-            ){
-                Text(text = "Service : $isBound")
-                Text(text = "USB : $isConnected")
-            }
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(5.dp)
-                    .fillMaxWidth()
-            ){
-                Text(text = "Drone Status : ${droneStatus.uppercase()}")
-                Text(text = "Mode : $mode")
-            }
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(5.dp)
-                    .fillMaxWidth()
-            ){
-                Text(text = "GPS Fix : $gpxFix")
-                Text(text = "Satellites Visible : $satellites")
-            }
-            Row(
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+    Column() {
+        Card(shape = RoundedCornerShape(8.dp)
+            , backgroundColor = Color.LightGray
+            , modifier = Modifier
+                .weight(0.3F)
+                .padding(2.dp)){
+            Column() {
                 Row(
+                    horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(0.33f)
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .fillMaxWidth()
                 ){
-                    Text(text = "Pitch: $pitch",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
+                    Text(text = "Service : $isBound")
+                    Text(text = "USB : $isConnected")
                 }
                 Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(0.33f)
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .fillMaxWidth()
                 ){
-                    Text(text = "Roll: $roll",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
+                    Text(text = "Drone Status : ${droneStatus.uppercase()}")
+                    Text(text = "Mode : $mode")
                 }
                 Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(0.33f)
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .fillMaxWidth()
                 ){
-                    Text(text = "Yaw: $yaw",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis)
+                    Text(text = "GPS Fix : $gpxFix")
+                    Text(text = "Satellites Visible : $satellites")
+                }
+                Row(
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(0.33f)
+                    ){
+                        Text(text = "Pitch: $pitch",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(0.33f)
+                    ){
+                        Text(text = "Roll: $roll",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(0.33f)
+                    ){
+                        Text(text = "Yaw: $yaw",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Text(text = "Lat: $latitude")
+                Text(text = "Lon: $longitude")
+                Row(
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Alt: $altitude")
+                    Text(text = "hAcc: $hAcc meters")
                 }
             }
-
-            Text(text = "Lat: $latitude")
-            Text(text = "Lon: $longitude")
-            Text(text = "Alt: $altitude")
-            Text(text = "hAcc: $hAcc meters")
-            Row() {
-                Text(text = "MESSAGES ",
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center)
-            }
-            Text(text = debugMessage, modifier = Modifier.verticalScroll(scroll))
         }
-
-        Row(
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(15.dp)
-            .align(Alignment.BottomCenter)
+        Row(){
+            Text(text = "MESSAGES ",
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .fillMaxWidth(),
+                textAlign = TextAlign.Center)
+        }
+        Card(shape = RoundedCornerShape(8.dp,)
+            , backgroundColor = Color.LightGray
+            , modifier = Modifier
+                .padding(2.dp)
+                .weight(0.5F)
         ) {
-
+            LazyColumn(modifier = Modifier
+                    .padding(2.dp)
+                    .weight(0.2F)
+                    .fillMaxWidth()){
+                items(debugMessage.size){
+                        Text(text = debugMessage[it])
+                }
+            }
+        }
+        Card(shape = RoundedCornerShape(8.dp)
+            , backgroundColor = Color.LightGray
+            , modifier = Modifier
+                //.weight(0.30F)
+                .padding(2.dp)){
             val armed : Boolean = when(droneStatus){
                 Status.Armed.name, Status.InFlight.name, Status.Landing.name -> true
                 else -> false
@@ -298,7 +325,6 @@ fun MainScreen(
             var sliderAltitude by remember {
                 mutableStateOf(5f)
             }
-
             Column() {
                 Row(horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
@@ -306,12 +332,12 @@ fun MainScreen(
                         .fillMaxWidth()
                 ){
                     Column() {
-                        Text(text = "Altitude: $sliderAltitude")
+                        Text(text = "Altitude: ${sliderAltitude.roundToInt()}")
                         Slider(
                             value = sliderAltitude,
                             onValueChange = { sliderAltitude = it },
-                            steps = 8,
-                            valueRange = 5f..50f
+                            steps = 7,
+                            valueRange = 4f..20f
                         )
                     }
                 }
@@ -320,7 +346,7 @@ fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(15.dp)
+                        .padding(10.dp)
                 ){
                     Button(onClick = {
                         if(armButtonLabel == "Arm"){
@@ -342,7 +368,7 @@ fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(15.dp)
+                        .padding(10.dp)
                 ) {
                     Button(enabled = controlsEnabled,
                         onClick = { droneService?.land() }) {
@@ -361,26 +387,7 @@ fun MainScreen(
                     }
                 }
             }
-
-        /*Button(onClick = {
-            if(droneStatus == Status.Unarmed.name) {
-                droneService?.arm()
-            }else if(droneStatus == Status.Armed.name){
-                droneService?.disarm()
-            }
-        }) {
-            Text(text = armButtonLabel)
         }
-        Button(enabled = takeoffButtonEnabled, onClick = {
-            droneService?.takeoff(5F) }) {
-            Text(text = "Takeoff")
-        }
-        Button(enabled = landButtonEnabled, onClick = {
-            droneService?.land()
-        }) {
-            Text(text = "Land")
-        }*/
-    }
     }
 }
 

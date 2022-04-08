@@ -571,7 +571,7 @@ class DroneService : Service() {
         groundSpeed: Float? = null,
         airSpeed: Float? = 1.0F
     ){
-        val acc = 7
+        val acc = 15
         if(location.accuracy > acc){
             _writeToDebugSpace("Location accuracy > $acc meters. Drone won't proceed")
             return

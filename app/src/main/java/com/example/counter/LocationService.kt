@@ -83,8 +83,8 @@ class LocationService : Service(), LocationListener {
                 }else{
                     locationManager.requestLocationUpdates(
                         LocationManager.GPS_PROVIDER,
-                        5000,
-                        10F,
+                        1000,
+                        1F,
                         this
                     )
                     location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
@@ -169,7 +169,7 @@ class LocationService : Service(), LocationListener {
         _setAltitude("$altitude")
         _setHAccMts(location.accuracy.toString())
         _setLocation(location)
-        _writeToDebugSpace("Location updated by ${location!!.provider} Acc: ${location.accuracy}")
+        _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy}")
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
