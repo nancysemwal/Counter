@@ -614,4 +614,7 @@ class DroneService : Service() {
             }
         }
     }
+    fun followMe(){
+
+    }
 }

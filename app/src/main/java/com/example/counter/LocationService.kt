@@ -65,11 +65,12 @@ class LocationService : Service(), LocationListener {
         _setBoundStatus(true)
         getLocation()
     }
-
+    //private val provider = LocationManager.NETWORK_PROVIDER
+    private val provider = LocationManager.GPS_PROVIDER
     fun getLocation(): Location? {
-        isGPSEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-        isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-        if(!isGPSEnabled && !isNetworkEnabled){
+        isGPSEnabled = locationManager.isProviderEnabled(provider)
+        //isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        if(!isGPSEnabled){
             _writeToDebugSpace("No provider enabled")
         }else{
             if(isGPSEnabled) {
@@ -82,12 +83,14 @@ class LocationService : Service(), LocationListener {
                     _writeToDebugSpace("No permissions")
                 }else{
                     locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
+                        provider,
                         1000,
                         1F,
                         this
                     )
-                    location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    location = locationManager.getLastKnownLocation(provider)
+                    location?.let { onLocationChanged(it) }
+                    /*
                     if(location != null && location!!.accuracy < hAccuracy){
                         latitude = location!!.latitude
                         longitude = location!!.longitude
@@ -100,6 +103,7 @@ class LocationService : Service(), LocationListener {
                         _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
                         Log.d("lctn","from getLocation() $location")
                     }
+                    */
                 }
             }
             else{
@@ -160,15 +164,19 @@ class LocationService : Service(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
-        if (location.provider == LocationManager.NETWORK_PROVIDER) return;
+        if (location.provider != provider) return;
+        /*
         latitude = location.latitude
         longitude = location.longitude
         altitude = location.altitude
+         */
+        _setLocation(location)
+        /*
         _setLatitude("$latitude")
         _setLongitude("$longitude")
         _setAltitude("$altitude")
         _setHAccMts(location.accuracy.toString())
-        _setLocation(location)
+         */
         _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy}")
     }
 

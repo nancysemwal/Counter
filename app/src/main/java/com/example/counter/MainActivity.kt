@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Button
 import androidx.compose.material.Card
 import androidx.compose.material.Slider
@@ -26,12 +25,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -109,18 +108,40 @@ class MainActivity : ComponentActivity() {
         }
 
     }
+    var prevLocation: Location = location.value
+    val minAccuracy = 10.0F
+    val eps = 1e-15
+    var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
+    private fun locationDiff(prev: Location, cur: Location) : Boolean {
 
+        if (cur.accuracy < minAccuracy) return false
+        if (abs(cur.latitude - prev.latitude) > eps) return true
+        if (abs(cur.longitude - prev.longitude) > eps) return true
+        return false
+    }
     private val locationServiceConnection = object : ServiceConnection{
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
             //locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
+            /*
             locationService?.setLatitude { b -> latitude.value = b }
             locationService?.setLongitude { b -> longitude.value = b }
             locationService?.setAltitude { b -> altitude.value = b}
             locationService?.setHAccMts { b -> hAcc.value = b }
-            locationService?.setLocation { b -> location.value = b }
+             */
+            locationService?.setLocation { b ->
+                prevLocation = location.value
+                location.value = b
+                hAcc.value = b.accuracy.toString()
+                altitude.value = b.altitude.toString()
+                latitude.value = b.latitude.toString()
+                longitude.value = b.longitude.toString()
+                if (isFollowMe.value && locationDiff(prevLocation, location.value)) {
+                    droneService?.gotoLocation2(location.value)
+                }
+            }
             locationPermissionRequest.launch(arrayOf(
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
@@ -154,7 +175,8 @@ class MainActivity : ComponentActivity() {
                     longitude.value,
                     altitude.value,
                     hAcc.value,
-                    location.value
+                    location.value,
+                    isFollowMe
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -200,6 +222,7 @@ fun MainScreen(
     , debugMessage: List<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
+, isFollowMe: MutableState<Boolean>
 )
 {
     val scroll = rememberScrollState()
@@ -296,9 +319,9 @@ fun MainScreen(
                 .weight(0.5F)
         ) {
             LazyColumn(modifier = Modifier
-                    .padding(2.dp)
-                    .weight(0.2F)
-                    .fillMaxWidth()){
+                .padding(2.dp)
+                .weight(0.2F)
+                .fillMaxWidth()){
                 items(debugMessage.size){
                         Text(text = debugMessage[it])
                 }
@@ -384,6 +407,11 @@ fun MainScreen(
                         }
                     ) {
                         Text(text = "Come")
+                    }
+                    Button(enabled = controlsEnabled, onClick = {
+                        isFollowMe.value = !(isFollowMe.value)
+                    }) {
+                        Text(text = "Follow me")
                     }
                 }
             }
