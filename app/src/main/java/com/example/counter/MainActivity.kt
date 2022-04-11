@@ -17,10 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Button
-import androidx.compose.material.Card
-import androidx.compose.material.Slider
-import androidx.compose.material.Text
+import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -85,6 +83,8 @@ class MainActivity : ComponentActivity() {
     private var debugMessage = mutableListOf<String>()
     private var location = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
 
+    private var sliderAltitude = mutableStateOf(5f)
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val droneBinder = service as DroneService.DroneBinder
@@ -109,16 +109,23 @@ class MainActivity : ComponentActivity() {
 
     }
     var prevLocation: Location = location.value
-    val minAccuracy = 10.0F
+    val minAccuracy = 15.0F
     val eps = 1e-15
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
-    private fun locationDiff(prev: Location, cur: Location) : Boolean {
 
-        if (cur.accuracy < minAccuracy) return false
+    private fun locationDiff(prev: Location, cur: Location) : Double {
+        val diff1 = abs(cur.latitude - prev.latitude)
+        val diff2 = abs(cur.longitude - prev.longitude)
+        return max(diff1, diff2)
+    }
+
+    private fun isLocationDiff(prev: Location, cur: Location) : Boolean {
+        if (cur.accuracy > minAccuracy) return false
         if (abs(cur.latitude - prev.latitude) > eps) return true
         if (abs(cur.longitude - prev.longitude) > eps) return true
         return false
     }
+
     private val locationServiceConnection = object : ServiceConnection{
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
@@ -138,8 +145,10 @@ class MainActivity : ComponentActivity() {
                 altitude.value = b.altitude.toString()
                 latitude.value = b.latitude.toString()
                 longitude.value = b.longitude.toString()
-                if (isFollowMe.value && locationDiff(prevLocation, location.value)) {
-                    droneService?.gotoLocation2(location.value)
+                //Log.d("flw, followme", isFollowMe.value.toString())
+                if (isFollowMe.value && isLocationDiff(prevLocation, location.value)) {
+                    //Log.d("flw, sending to drone", locationDiff(prevLocation, location.value).toString())
+                    droneService?.gotoLocation2(location.value, sliderAltitude.value.toDouble())
                 }
             }
             locationPermissionRequest.launch(arrayOf(
@@ -176,7 +185,8 @@ class MainActivity : ComponentActivity() {
                     altitude.value,
                     hAcc.value,
                     location.value,
-                    isFollowMe
+                    isFollowMe,
+                    sliderAltitude
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -222,7 +232,7 @@ fun MainScreen(
     , debugMessage: List<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
-, isFollowMe: MutableState<Boolean>
+    , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
 )
 {
     val scroll = rememberScrollState()
@@ -344,10 +354,6 @@ fun MainScreen(
                 Status.Armed.name, Status.InFlight.name, Status.Landing.name -> true
                 else -> false
             }
-
-            var sliderAltitude by remember {
-                mutableStateOf(5f)
-            }
             Column() {
                 Row(horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
@@ -355,10 +361,10 @@ fun MainScreen(
                         .fillMaxWidth()
                 ){
                     Column() {
-                        Text(text = "Altitude: ${sliderAltitude.roundToInt()}")
+                        Text(text = "Altitude: ${sliderAltitude.value.roundToInt()}")
                         Slider(
-                            value = sliderAltitude,
-                            onValueChange = { sliderAltitude = it },
+                            value = sliderAltitude.value,
+                            onValueChange = { sliderAltitude.value = it },
                             steps = 7,
                             valueRange = 4f..20f
                         )
@@ -382,7 +388,7 @@ fun MainScreen(
                         Text(text = armButtonLabel)
                     }
                     Button(enabled = controlsEnabled,
-                        onClick = { droneService?.takeoff(sliderAltitude) }) {
+                        onClick = { droneService?.takeoff(sliderAltitude.value) }) {
                         Text(text = "Takeoff")
                     }
                 }
@@ -401,17 +407,15 @@ fun MainScreen(
                         enabled = controlsEnabled,
                         onClick = {
                             if (location != null) {
-                                location.altitude = sliderAltitude.toDouble()
-                                droneService?.gotoLocation2(location)
+                                droneService?.gotoLocation2(location, sliderAltitude.value.toDouble())
                             }
                         }
                     ) {
                         Text(text = "Come")
                     }
-                    Button(enabled = controlsEnabled, onClick = {
-                        isFollowMe.value = !(isFollowMe.value)
-                    }) {
+                    Row(){
                         Text(text = "Follow me")
+                        Switch(enabled = controlsEnabled, checked = isFollowMe.value, onCheckedChange = { isFollowMe.value = it })
                     }
                 }
             }

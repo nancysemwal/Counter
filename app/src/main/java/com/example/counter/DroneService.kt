@@ -566,8 +566,10 @@ class DroneService : Service() {
         }
     }
 
+    var lastAltitude : Double = 10.0
     fun gotoLocation2(
         location: Location,
+        altitude: Double? = null,
         groundSpeed: Float? = null,
         airSpeed: Float? = 1.0F
     ){
@@ -576,43 +578,48 @@ class DroneService : Service() {
             _writeToDebugSpace("Location accuracy > $acc meters. Drone won't proceed")
             return
         }
-        else{
-            _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude}")
-            if(groundSpeed != null){
-                setGroundSpeed(groundSpeed)
-            }
-            if(airSpeed != null){
-                setAirSpeed(airSpeed)
-            }
-            val frame = MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT //try relative alt also
-            val altitude = location.altitude.toFloat()
-            //val altitude = 10F
-            val latitude = location.latitude.toFloat() //try giving raw values also
-            val longitude = location.longitude.toFloat()
-            val command = MavCmd.MAV_CMD_NAV_WAYPOINT
-            val message : MissionItem = MissionItem.builder()  //try mission item also
-                .targetSystem(1)
-                .targetComponent(0)
-                .seq(0)
-                .frame(frame)
-                .command(command)
-                .current(2) //try 1 also
-                .autocontinue(0)
-                .param1(0F)
-                .param2(0F)
-                .param3(0F)
-                .param4(0F)
-                .x(latitude)
-                .y(longitude)
-                .z(altitude)
-                .build()
-            try {
-                mavlinkConnection.send2(systemId, componentId, message)
-                Log.d("wpt","$message")
-            }catch (e : IOException){
-
-            }
+        if (altitude == null) {
+            location.altitude = lastAltitude
+        } else {
+            location.altitude = altitude
+            lastAltitude = altitude
         }
+        _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude}")
+        if(groundSpeed != null){
+            setGroundSpeed(groundSpeed)
+        }
+        if(airSpeed != null){
+            setAirSpeed(airSpeed)
+        }
+        val frame = MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT //try relative alt also
+        val altitude = location.altitude.toFloat()
+        //val altitude = 10F
+        val latitude = location.latitude.toFloat() //try giving raw values also
+        val longitude = location.longitude.toFloat()
+        val command = MavCmd.MAV_CMD_NAV_WAYPOINT
+        val message : MissionItem = MissionItem.builder()  //try mission item also
+            .targetSystem(1)
+            .targetComponent(0)
+            .seq(0)
+            .frame(frame)
+            .command(command)
+            .current(2) //try 1 also
+            .autocontinue(0)
+            .param1(0F)
+            .param2(0F)
+            .param3(0F)
+            .param4(0F)
+            .x(latitude)
+            .y(longitude)
+            .z(altitude)
+            .build()
+        try {
+            mavlinkConnection.send2(systemId, componentId, message)
+            Log.d("wpt","$message")
+        }catch (e : IOException){
+
+        }
+
     }
     fun followMe(){
 
