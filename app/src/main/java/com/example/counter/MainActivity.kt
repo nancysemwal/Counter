@@ -15,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -79,7 +78,6 @@ class MainActivity : ComponentActivity() {
     private var longitude = mutableStateOf("")
     private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
-    //private var debugMessage = mutableStateOf("")
     private var debugMessage = mutableListOf<String>()
     private var location = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
 
@@ -89,6 +87,17 @@ class MainActivity : ComponentActivity() {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val droneBinder = service as DroneService.DroneBinder
             droneService = droneBinder.getService()
+            val location1 : Location = Location("dummyprovider")
+            val location2 : Location = Location("dummyprovider")
+            location1.latitude = 39.099912
+            location1.longitude = -94.581213
+            location2.latitude = 38.627089
+            location2.longitude = -90.200203
+            val difference = droneService?.distanceInMeters(location1, location2)
+            val heading = droneService?.calculateHeading(location1, location2)
+            val newLocation =
+                heading?.let { droneService?.getNewCoords(location1, it.toDouble(), 399F) }
+            Log.d("brng", "new Location $newLocation")
             droneService?.setUsbStatus { b -> isUsbConnected.value = b }
             droneService?.setPitch { b -> pitch.value = b }
             droneService?.setRoll { b -> roll.value = b }
@@ -98,7 +107,6 @@ class MainActivity : ComponentActivity() {
             droneService?.setGpsFix { b -> gpsFix.value = b }
             droneService?.setSatellites { b -> satellites.value = b }
             droneService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
-            //droneService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
             isBound.value = true
             setFilters()
         }
@@ -109,8 +117,8 @@ class MainActivity : ComponentActivity() {
 
     }
     var prevLocation: Location = location.value
-    val minAccuracy = 15.0F
-    val eps = 1e-15
+    private val minAccuracy = 15.0F
+    private val eps = 1e-15
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
 
     private fun locationDiff(prev: Location, cur: Location) : Double {
@@ -131,13 +139,6 @@ class MainActivity : ComponentActivity() {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
-            //locationService?.writeToDebugSpace { b -> debugMessage.value = b + "\n" + debugMessage.value }
-            /*
-            locationService?.setLatitude { b -> latitude.value = b }
-            locationService?.setLongitude { b -> longitude.value = b }
-            locationService?.setAltitude { b -> altitude.value = b}
-            locationService?.setHAccMts { b -> hAcc.value = b }
-             */
             locationService?.setLocation { b ->
                 prevLocation = location.value
                 location.value = b
@@ -145,10 +146,8 @@ class MainActivity : ComponentActivity() {
                 altitude.value = b.altitude.toString()
                 latitude.value = b.latitude.toString()
                 longitude.value = b.longitude.toString()
-                //Log.d("flw, followme", isFollowMe.value.toString())
                 if (isFollowMe.value && isLocationDiff(prevLocation, location.value)) {
-                    //Log.d("flw, sending to drone", locationDiff(prevLocation, location.value).toString())
-                    droneService?.gotoLocation2(location.value, sliderAltitude.value.toDouble())
+                    droneService?.gotoLocation(location.value, sliderAltitude.value.toDouble())
                 }
             }
             locationPermissionRequest.launch(arrayOf(
@@ -235,7 +234,6 @@ fun MainScreen(
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
 )
 {
-    val scroll = rememberScrollState()
     Column() {
         Card(shape = RoundedCornerShape(8.dp)
             , backgroundColor = Color.LightGray
@@ -354,6 +352,10 @@ fun MainScreen(
                 Status.Armed.name, Status.InFlight.name, Status.Landing.name -> true
                 else -> false
             }
+            val followMeEnabled = when(droneStatus){
+                Status.Armed.name, Status.InFlight.name -> true
+                else -> false
+            }
             Column() {
                 Row(horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
@@ -381,7 +383,7 @@ fun MainScreen(
                         if(armButtonLabel == "Arm"){
                             droneService?.arm()
                         }
-                        else if(armButtonLabel == "Disarm"){
+                        else if(armButtonLabel == "Unarm"){
                             droneService?.disarm()
                         }
                     }) {
@@ -407,15 +409,19 @@ fun MainScreen(
                         enabled = controlsEnabled,
                         onClick = {
                             if (location != null) {
-                                droneService?.gotoLocation2(location, sliderAltitude.value.toDouble())
+                                droneService?.gotoLocation(location, sliderAltitude.value.toDouble())
                             }
                         }
                     ) {
                         Text(text = "Come")
                     }
                     Row(){
-                        Text(text = "Follow me")
-                        Switch(enabled = controlsEnabled, checked = isFollowMe.value, onCheckedChange = { isFollowMe.value = it })
+                        Text(text = "Follow Me")
+                        Switch(
+                            enabled = followMeEnabled,
+                            checked = isFollowMe.value,
+                            onCheckedChange = { isFollowMe.value = it }
+                        )
                     }
                 }
             }

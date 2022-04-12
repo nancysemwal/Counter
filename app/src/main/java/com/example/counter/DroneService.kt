@@ -24,7 +24,7 @@ import java.io.IOException
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.round
+import kotlin.math.*
 
 class DroneService : Service() {
 
@@ -249,11 +249,12 @@ class DroneService : Service() {
                         flightMode = fmode.split("_").last()
                         _setMode(flightMode)
                         armed = ((baseMode and 128) != 0)
-                        if(armed && (droneStatus == Status.Unarmed.name)){
-                                        droneStatus = Status.Armed.name
-                                        _setDroneStatus(droneStatus)
+                        if(armed && (droneStatus == Status.Unarmed.name))
+                        {
+                            droneStatus = Status.Armed.name
+                            _setDroneStatus(droneStatus)
                             Log.d("hrtbt","armed")
-                                         _writeToDebugSpace("Drone Armed")
+                            _writeToDebugSpace("Drone Armed")
                         }
                         else if(!armed){
                             droneStatus = Status.Unarmed.name
@@ -295,6 +296,8 @@ class DroneService : Service() {
                             }else if(flag == 0 /*disarm*/){
                                 if(ackMsg.result().value() == 0){
                                     droneStatus = Status.Unarmed.name
+                                    _setDroneStatus(droneStatus)
+                                    _writeToDebugSpace("Drone unarmed")
                                 }
                             }
                         }
@@ -492,32 +495,6 @@ class DroneService : Service() {
         }
     }
 
-    fun gotoLocation(location: Location){
-        val altitude = location.altitude
-        val latitude = location.latitude
-        val longitude = location.longitude
-        val command = MavCmd.MAV_CMD_NAV_WAYPOINT
-        val message : CommandLong = CommandLong.builder()
-            .targetSystem(1)
-            .targetComponent(0)
-            .command(command)
-            .confirmation(0)
-            .param1(0F)
-            .param2(0F)
-            .param3(0F)
-            .param4(0F)
-            .param5(latitude.toFloat())
-            .param6(longitude.toFloat())
-            .param7(altitude.toFloat())
-            .build()
-        try {
-            mavlinkConnection.send2(systemId, componentId, message)
-            Log.d("wpt","goto message sent $message")
-        }catch (e : IOException){
-
-        }
-    }
-
     private fun setAirSpeed(airSpeed: Float){
         val speedType = 0F //airspeed
         val command : MavCmd = MavCmd.MAV_CMD_DO_CHANGE_SPEED
@@ -566,8 +543,28 @@ class DroneService : Service() {
         }
     }
 
-    var lastAltitude : Double = 10.0
-    fun gotoLocation2(
+    fun distanceInMeters(currentLoc : Location, targetLoc : Location): Double{
+        var distance : Double = 0.0
+        val earthRadius = 6371000
+        val latDiff = Math.toRadians(currentLoc.latitude - targetLoc.latitude)
+        val lonDiff = Math.toRadians(currentLoc.longitude - targetLoc.longitude)
+        val a = sin(latDiff / 2) * sin(latDiff / 2 ) +
+                cos(Math.toRadians(currentLoc.latitude)) * cos(Math.toRadians(targetLoc.latitude)) *
+                sin(lonDiff / 2 ) * sin(lonDiff / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        distance = earthRadius * c
+        return distance
+    }
+
+    fun calculateAirspeed(distance: Float): Float{
+        val speed : Float = 0.5F * distance
+        if(speed <= 1F) return 1F
+        if(speed >= 5F) return 5F
+        return speed
+    }
+
+    private var lastAltitude : Double = 10.0
+    fun gotoLocation(
         location: Location,
         altitude: Double? = null,
         groundSpeed: Float? = null,
@@ -619,9 +616,39 @@ class DroneService : Service() {
         }catch (e : IOException){
 
         }
-
     }
-    fun followMe(){
+
+    fun calculateHeading(location1: Location, location2: Location): Double {
+        val loc1latRad = Math.toRadians(location1.latitude)
+        val loc1lonRad = Math.toRadians(location1.longitude)
+        val loc2latRad = Math.toRadians(location2.latitude)
+        val loc2lonRad = Math.toRadians(location2.longitude)
+        val x = sin(loc2lonRad - loc1lonRad) * cos(loc2latRad)
+        val y = cos(loc1latRad) * sin(loc2latRad) -
+                sin(loc1latRad) * cos(loc2latRad) * cos(loc2lonRad - loc1lonRad)
+        val theta = atan2(x, y)
+        val heading = (theta * 180 / Math.PI + 360) % 360
+        return heading
+    }
+
+    fun getNewCoords(location: Location, heading: Double, distance: Float): Location{
+        val oldLatitude = Math.toRadians(location.latitude)
+        val oldLongitude = Math.toRadians(location.longitude)
+        val headingInRadians = Math.toRadians(heading)
+        val earthRadius = 6371000
+        val angularDistance = distance / earthRadius
+        val newLatitude = asin(sin(oldLatitude) * cos(angularDistance) +
+                cos(oldLatitude) * sin(angularDistance) * cos(heading))
+        val newLongitude = oldLongitude +
+                atan2(sin(headingInRadians) * sin(angularDistance) * cos(oldLatitude), cos(angularDistance) - sin(oldLatitude) * sin(newLatitude))
+        val newLocation = Location("dummyprovider")
+        newLocation.longitude = newLongitude
+        newLocation.latitude = newLatitude
+        Log.d("brng", "$newLocation")
+        return newLocation
+    }
+
+    fun followXMtsApart(){
 
     }
 }
