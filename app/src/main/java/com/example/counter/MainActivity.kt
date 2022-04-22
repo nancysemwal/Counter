@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
+import java.nio.channels.FileLock
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -79,25 +80,19 @@ class MainActivity : ComponentActivity() {
     private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
     private var debugMessage = mutableListOf<String>()
-    private var location = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
-
+    private var currLocation = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
+    private val minAccuracy = 15.0F
+    private val eps = 1e-15
     private var sliderAltitude = mutableStateOf(5f)
+    private var sliderDistance = mutableStateOf(0f)
+
+    var prevLocation: Location? = null
+    var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val droneBinder = service as DroneService.DroneBinder
             droneService = droneBinder.getService()
-            val location1 : Location = Location("dummyprovider")
-            val location2 : Location = Location("dummyprovider")
-            location1.latitude = 39.099912
-            location1.longitude = -94.581213
-            location2.latitude = 38.627089
-            location2.longitude = -90.200203
-            val difference = droneService?.distanceInMeters(location1, location2)
-            val heading = droneService?.calculateHeading(location1, location2)
-            val newLocation =
-                heading?.let { droneService?.getNewCoords(location1, it.toDouble(), 399F) }
-            Log.d("brng", "new Location $newLocation")
             droneService?.setUsbStatus { b -> isUsbConnected.value = b }
             droneService?.setPitch { b -> pitch.value = b }
             droneService?.setRoll { b -> roll.value = b }
@@ -116,16 +111,6 @@ class MainActivity : ComponentActivity() {
         }
 
     }
-    var prevLocation: Location = location.value
-    private val minAccuracy = 15.0F
-    private val eps = 1e-15
-    var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
-
-    private fun locationDiff(prev: Location, cur: Location) : Double {
-        val diff1 = abs(cur.latitude - prev.latitude)
-        val diff2 = abs(cur.longitude - prev.longitude)
-        return max(diff1, diff2)
-    }
 
     private fun isLocationDiff(prev: Location, cur: Location) : Boolean {
         if (cur.accuracy > minAccuracy) return false
@@ -140,14 +125,34 @@ class MainActivity : ComponentActivity() {
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
             locationService?.setLocation { b ->
-                prevLocation = location.value
-                location.value = b
-                hAcc.value = b.accuracy.toString()
-                altitude.value = b.altitude.toString()
-                latitude.value = b.latitude.toString()
-                longitude.value = b.longitude.toString()
-                if (isFollowMe.value && isLocationDiff(prevLocation, location.value)) {
-                    droneService?.gotoLocation(location.value, sliderAltitude.value.toDouble())
+                if(prevLocation == null){
+                    prevLocation = b
+                    currLocation.value = b
+                } else {
+                    prevLocation = currLocation.value
+                    currLocation.value = b
+                    hAcc.value = b.accuracy.toString()
+                    altitude.value = b.altitude.toString()
+                    latitude.value = b.latitude.toString()
+                    longitude.value = b.longitude.toString()
+                    if (isFollowMe.value && isLocationDiff(prevLocation!!, currLocation.value)) {
+                        val heading = locationService?.calculateHeadingEuclid(prevLocation!!, currLocation.value)
+                        val distance = sliderDistance
+                        val newLocation = heading?.let {
+                            locationService?.getNewCoordsEuclidean(currLocation.value,
+                                it, distance.value.toDouble())
+                        }
+                        if (newLocation != null) {
+                            val dist = locationService?.distanceInMetersEuclid(currLocation.value,
+                            newLocation)
+                            val airSpeed = dist?.let { droneService?.calculateAirspeed(it) }
+                            droneService?.gotoLocation(
+                                newLocation,
+                                altitude = sliderAltitude.value.toDouble(),
+                                airSpeed = airSpeed
+                            )
+                        }
+                    }
                 }
             }
             locationPermissionRequest.launch(arrayOf(
@@ -183,9 +188,10 @@ class MainActivity : ComponentActivity() {
                     longitude.value,
                     altitude.value,
                     hAcc.value,
-                    location.value,
+                    currLocation.value,
                     isFollowMe,
-                    sliderAltitude
+                    sliderAltitude,
+                    sliderDistance
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -214,7 +220,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setFilters() {
-        var filter = IntentFilter()
+        val filter = IntentFilter()
         filter.addAction(droneService?.STATUS_NO_FLIGHTMODE)
         filter.addAction(droneService?.STATUS_NO_GPS)
         filter.addAction(droneService?.STATUS_NO_EKF)
@@ -232,6 +238,7 @@ fun MainScreen(
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
+    , sliderDistance: MutableState<Float>
 )
 {
     Column() {
@@ -369,6 +376,21 @@ fun MainScreen(
                             onValueChange = { sliderAltitude.value = it },
                             steps = 7,
                             valueRange = 4f..20f
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ){
+                    Column() {
+                        Text(text = "Distance: ${sliderDistance.value.roundToInt()}")
+                        Slider(
+                            value = sliderDistance.value,
+                            onValueChange = { sliderDistance.value = it },
+                            steps = 4,
+                            valueRange = 0f..25f
                         )
                     }
                 }

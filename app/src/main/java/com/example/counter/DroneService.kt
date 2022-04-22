@@ -589,7 +589,7 @@ class DroneService : Service() {
             setAirSpeed(airSpeed)
         }
         val frame = MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT //try relative alt also
-        val altitude = location.altitude.toFloat()
+        //val altitude = location.altitude.toFloat()
         //val altitude = 10F
         val latitude = location.latitude.toFloat() //try giving raw values also
         val longitude = location.longitude.toFloat()
@@ -608,7 +608,7 @@ class DroneService : Service() {
             .param4(0F)
             .x(latitude)
             .y(longitude)
-            .z(altitude)
+            .z(location.altitude.toFloat())
             .build()
         try {
             mavlinkConnection.send2(systemId, componentId, message)
@@ -617,8 +617,12 @@ class DroneService : Service() {
 
         }
     }
-
-    fun calculateHeading(location1: Location, location2: Location): Double {
+}
+/*
+fun calculateHeading(
+        location1: Location,
+        location2: Location
+    ): Double {
         val loc1latRad = Math.toRadians(location1.latitude)
         val loc1lonRad = Math.toRadians(location1.longitude)
         val loc2latRad = Math.toRadians(location2.latitude)
@@ -631,24 +635,48 @@ class DroneService : Service() {
         return heading
     }
 
-    fun getNewCoords(location: Location, heading: Double, distance: Float): Location{
+    fun getNewCoords(
+        location: Location,
+        heading: Double,
+        distance: Double
+    ): Location{
         val oldLatitude = Math.toRadians(location.latitude)
         val oldLongitude = Math.toRadians(location.longitude)
         val headingInRadians = Math.toRadians(heading)
-        val earthRadius = 6371000
+        val earthRadius = 6371 //6371000
         val angularDistance = distance / earthRadius
         val newLatitude = asin(sin(oldLatitude) * cos(angularDistance) +
                 cos(oldLatitude) * sin(angularDistance) * cos(heading))
         val newLongitude = oldLongitude +
                 atan2(sin(headingInRadians) * sin(angularDistance) * cos(oldLatitude), cos(angularDistance) - sin(oldLatitude) * sin(newLatitude))
         val newLocation = Location("dummyprovider")
-        newLocation.longitude = newLongitude
-        newLocation.latitude = newLatitude
+        newLocation.longitude = Math.toDegrees(newLongitude)
+        newLocation.latitude = Math.toDegrees(newLatitude)
         Log.d("brng", "$newLocation")
         return newLocation
     }
 
-    fun followXMtsApart(){
-
+    fun getOffsetLocation(
+        prevLocation: Location,
+        currLocation: Location,
+        offset: Double
+    ): Location {
+        val heading = calculateHeading(prevLocation, currLocation)
+        return getNewCoords(prevLocation, heading, offset)
     }
-}
+
+    fun calculateHeadingEuclid(
+        location1: Location,
+        location2: Location,
+    ): Double{
+        val loc1latRad = Math.toRadians(location1.latitude)
+        val loc1lonRad = Math.toRadians(location1.longitude)
+        val loc2latRad = Math.toRadians(location2.latitude)
+        val loc2lonRad = Math.toRadians(location2.longitude)
+        val deltaX = (loc1latRad - loc2latRad)
+        val deltaY = loc1lonRad - loc2lonRad
+        val theta = atan(deltaY / deltaX)
+        val headingEuclid = Math.toDegrees(theta)
+        return headingEuclid
+    }
+ */

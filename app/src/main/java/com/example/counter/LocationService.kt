@@ -13,35 +13,16 @@ import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import kotlin.math.*
 
 class LocationService : Service(), LocationListener {
 
     private var _setBoundStatus : (Boolean) -> Unit = {_ -> {}}
-    private var _setLatitude : (String) -> Unit = {_ -> {}}
-    private var _setLongitude : (String) -> Unit = {_ -> {}}
-    private var _setAltitude: (String) -> Unit = {_ -> {}}
     private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
-    private var _setHAccMts : (String) -> Unit = {b -> {}}
     private var _setLocation : (Location) -> Unit = {b -> {}}
 
-    fun setBoundStatus(_fn : (Boolean) -> Unit){
-        _setBoundStatus = _fn
-    }
-
-    fun setLatitude(_fn : (String) -> Unit){
-        _setLatitude = _fn
-    }
-    fun setLongitude(_fn : (String) -> Unit){
-        _setLongitude = _fn
-    }
-    fun setAltitude(_fn: (String) -> Unit){
-        _setAltitude = _fn
-    }
     fun writeToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
-    }
-    fun setHAccMts(_fn: (String) -> Unit){
-        _setHAccMts = _fn
     }
     fun setLocation(_fn: (Location) -> Unit){
         _setLocation = _fn
@@ -49,12 +30,7 @@ class LocationService : Service(), LocationListener {
     private val binder = LocationBinder()
 
     var isGPSEnabled = false
-    var isNetworkEnabled = false
     private var location : Location? = null
-    private var latitude = 0.0
-    private var longitude = 0.0
-    private var altitude = -1.0
-    private var hAccuracy = 10000F
 
     private val locationManager : LocationManager by lazy {
         getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -65,16 +41,13 @@ class LocationService : Service(), LocationListener {
         _setBoundStatus(true)
         getLocation()
     }
-    //private val provider = LocationManager.NETWORK_PROVIDER
     private val provider = LocationManager.GPS_PROVIDER
     fun getLocation(): Location? {
         isGPSEnabled = locationManager.isProviderEnabled(provider)
-        //isNetworkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
         if(!isGPSEnabled){
             _writeToDebugSpace("No provider enabled")
         }else{
             if(isGPSEnabled) {
-                //_writeToDebugSpace("GPS enabled")
                 if(ActivityCompat.checkSelfPermission(this,
                         Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                     &&
@@ -90,56 +63,11 @@ class LocationService : Service(), LocationListener {
                     )
                     location = locationManager.getLastKnownLocation(provider)
                     location?.let { onLocationChanged(it) }
-                    /*
-                    if(location != null && location!!.accuracy < hAccuracy){
-                        latitude = location!!.latitude
-                        longitude = location!!.longitude
-                        altitude = location!!.altitude
-                        _setLatitude("$latitude")
-                        _setLongitude("$longitude")
-                        _setAltitude("$altitude")
-                        _setHAccMts(location!!.accuracy.toString())
-                        _setLocation(location!!)
-                        _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
-                        Log.d("lctn","from getLocation() $location")
-                    }
-                    */
                 }
             }
             else{
                 _writeToDebugSpace("GPS not enabled")
             }
-            /*
-            if(isNetworkEnabled){
-                //_writeToDebugSpace("Network enabled")
-                if(ActivityCompat.checkSelfPermission(this,
-                        Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-                    &&
-                    ActivityCompat.checkSelfPermission(this,
-                        Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
-                    _writeToDebugSpace("No permissions")
-                }else{
-                    locationManager.requestLocationUpdates(
-                        LocationManager.NETWORK_PROVIDER,
-                        2000,
-                        10F,
-                        this
-                    )
-                    location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                    if(location != null && location!!.accuracy < hAccuracy){
-                        latitude = location!!.latitude
-                        longitude = location!!.longitude
-                        _setLatitude("$latitude")
-                        _setLongitude("$longitude")
-                        _setHAccMts(location!!.accuracy.toString())
-                        _writeToDebugSpace("Location provided by ${location!!.provider} Acc: ${location!!.accuracy}")
-                    }
-                }
-            }
-            else{
-                _writeToDebugSpace("N/W not enabled")
-            }
-             */
         }
         return location
     }
@@ -165,18 +93,7 @@ class LocationService : Service(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         if (location.provider != provider) return;
-        /*
-        latitude = location.latitude
-        longitude = location.longitude
-        altitude = location.altitude
-         */
         _setLocation(location)
-        /*
-        _setLatitude("$latitude")
-        _setLongitude("$longitude")
-        _setAltitude("$altitude")
-        _setHAccMts(location.accuracy.toString())
-         */
         _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy}")
     }
 
@@ -184,11 +101,35 @@ class LocationService : Service(), LocationListener {
         super.onStatusChanged(provider, status, extras)
     }
 
-    override fun onProviderEnabled(provider: String) {
-        super.onProviderEnabled(provider)
+    fun distanceInMetersEuclid(location1: Location, location2: Location): Float{
+        val latDiff = (location2.latitude - location1.latitude) * 1e5
+        val lonDiff = (location2.longitude - location1.longitude) * 1e5
+        val x = latDiff.pow(2)
+        val y = lonDiff.pow(2)
+        return sqrt(x + y).toFloat()
     }
 
-    override fun onProviderDisabled(provider: String) {
-        super.onProviderDisabled(provider)
+    fun getNewCoordsEuclidean(
+        location: Location,
+        heading: Double,
+        distanceInMts: Double
+    ): Location{
+        val newLatitude = (location.latitude * 1e5) + (distanceInMts * cos(heading))
+        val newLongitude = (location.longitude * 1e5) + (distanceInMts * sin(heading))
+        val newLocation : Location = Location("dummyprovider")
+        newLocation.latitude = newLatitude / 1e5
+        newLocation.longitude = newLongitude / 1e5
+        Log.d("eatery","euclidean new coords $newLocation")
+        return newLocation
     }
+
+    fun calculateHeadingEuclid(
+        location1: Location,
+        location2: Location,
+    ): Double {
+        val deltaY = location2.longitude - location1.longitude
+        val deltaX = location2.latitude - location1.latitude
+        return atan(deltaY / deltaX)
+    }
+
 }
