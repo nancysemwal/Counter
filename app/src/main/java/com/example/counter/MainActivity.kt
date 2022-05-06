@@ -26,9 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
-import java.nio.channels.FileLock
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -85,6 +83,8 @@ class MainActivity : ComponentActivity() {
     private val eps = 1e-15
     private var sliderAltitude = mutableStateOf(5f)
     private var sliderDistance = mutableStateOf(0f)
+    private var heading = mutableStateOf(-0.0)
+    private var yawSensor = mutableStateOf(-0.0)
 
     var prevLocation: Location? = null
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
@@ -97,7 +97,10 @@ class MainActivity : ComponentActivity() {
             droneService?.setPitch { b -> pitch.value = b }
             droneService?.setRoll { b -> roll.value = b }
             droneService?.setYaw { b -> yaw.value = b }
-            droneService?.setDroneStatus { b -> droneStatus.value = b }
+            droneService?.setDroneStatus { b -> droneStatus.value = b
+            if(droneStatus.value == Status.Landing.name){
+                isFollowMe.value = false
+            }}
             droneService?.setMode { b -> mode.value = b }
             droneService?.setGpsFix { b -> gpsFix.value = b }
             droneService?.setSatellites { b -> satellites.value = b }
@@ -124,6 +127,7 @@ class MainActivity : ComponentActivity() {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
+            locationService?.setYawSensor { b -> yawSensor.value = b }
             locationService?.setLocation { b ->
                 if(prevLocation == null){
                     prevLocation = b
@@ -137,8 +141,10 @@ class MainActivity : ComponentActivity() {
                     longitude.value = b.longitude.toString()
                     if (isFollowMe.value && isLocationDiff(prevLocation!!, currLocation.value)) {
                         val heading = locationService?.calculateHeadingEuclid(prevLocation!!, currLocation.value)
+                        var yawSensor = locationService?.updateOrientationAngles()
+                        yawSensor = yawSensor?.let { Math.toRadians(it) }
                         val distance = sliderDistance
-                        val newLocation = heading?.let {
+                        val newLocation = yawSensor?.let {
                             locationService?.getNewCoordsEuclidean(currLocation.value,
                                 it, distance.value.toDouble())
                         }
@@ -191,7 +197,9 @@ class MainActivity : ComponentActivity() {
                     currLocation.value,
                     isFollowMe,
                     sliderAltitude,
-                    sliderDistance
+                    sliderDistance,
+                    heading,
+                    yawSensor
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -238,7 +246,7 @@ fun MainScreen(
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
-    , sliderDistance: MutableState<Float>
+    , sliderDistance: MutableState<Float>, heading: MutableState<Double>, yawSensor: MutableState<Double>
 )
 {
     Column() {
@@ -315,8 +323,10 @@ fun MainScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = "Alt: $altitude")
-                    Text(text = "hAcc: $hAcc meters")
+                    /*Text(text = "Alt: $altitude")
+                    Text(text = "hAcc: $hAcc meters")*/
+                    Text(text = "Yaw: ${heading.value}")
+                    Text(text = "Yaw sensor: ${yawSensor.value}")
                 }
             }
         }
@@ -415,6 +425,7 @@ fun MainScreen(
                         onClick = { droneService?.takeoff(sliderAltitude.value) }) {
                         Text(text = "Takeoff")
                     }
+                    RadioButton(selected = controlsEnabled, onClick = { })
                 }
                 Row(
                     horizontalArrangement = Arrangement.SpaceAround,
