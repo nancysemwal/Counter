@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-
     package="com.example.counter">
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -13,12 +13,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Counter">
         <service
-            android:name=".DroneService"
+            android:name=".DirectionService"
             android:enabled="true"
             android:exported="true"></service>
-        <service android:name=".LocationService"
+        <service
+            android:name=".DroneService"
             android:enabled="true"
-            android:foregroundServiceType="location"></service>
+            android:exported="true" />
+        <service
+            android:name=".LocationService"
+            android:enabled="true"
+            android:foregroundServiceType="location" />
 
         <activity
             android:name=".MainActivity"
