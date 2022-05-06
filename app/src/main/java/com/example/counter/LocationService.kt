@@ -5,6 +5,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -15,17 +19,22 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import kotlin.math.*
 
-class LocationService : Service(), LocationListener {
+class LocationService : Service(), LocationListener, SensorEventListener {
 
     private var _setBoundStatus : (Boolean) -> Unit = {_ -> {}}
     private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
     private var _setLocation : (Location) -> Unit = {b -> {}}
+    private var _setYawSensor : (Double) -> Unit = {b -> {}}
 
     fun writeToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
     }
     fun setLocation(_fn: (Location) -> Unit){
         _setLocation = _fn
+    }
+
+    fun setYawSensor(_fn: (Double) -> Unit){
+        _setYawSensor = _fn
     }
     private val binder = LocationBinder()
 
@@ -36,10 +45,25 @@ class LocationService : Service(), LocationListener {
         getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
+    private lateinit var sensorManager: SensorManager
+    private val accelerometerReading = FloatArray(3)
+    private val magnetometerReading = FloatArray(3)
+    private val rotationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
+
     override fun onCreate(){
         super.onCreate()
         _setBoundStatus(true)
         getLocation()
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.also {
+                accelerometer ->
+            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI)
+        }
+        sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)?.also {
+                magneticField ->
+            sensorManager.registerListener(this, magneticField, SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI)
+        }
     }
     private val provider = LocationManager.GPS_PROVIDER
     fun getLocation(): Location? {
@@ -130,6 +154,63 @@ class LocationService : Service(), LocationListener {
         val deltaY = location2.longitude - location1.longitude
         val deltaX = location2.latitude - location1.latitude
         return atan(deltaY / deltaX)
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if(event == null){
+            return
+        }
+        if(event.sensor.type == Sensor.TYPE_ACCELEROMETER){
+            System.arraycopy(event.values, 0, accelerometerReading, 0,
+                accelerometerReading.size)
+        }
+        else if(event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD){
+            System.arraycopy(event.values, 0, magnetometerReading, 0,
+                magnetometerReading.size)
+        }
+        updateOrientationAngles()
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        Log.d("accry","accuracy changed")
+    }
+
+    fun updateOrientationAngles(): Double{
+        SensorManager.getRotationMatrix(rotationMatrix, null,
+            accelerometerReading, magnetometerReading)
+
+        val orientation = SensorManager.getOrientation(rotationMatrix, orientationAngles)
+
+        val degrees = (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
+
+        val angle = round(degrees * 100) / 100
+
+        val direction = getDirection(degrees)
+        _setYawSensor(angle)
+        return angle
+    }
+
+    private fun getDirection(angle: Double): String {
+        var direction = ""
+
+        if (angle >= 350 || angle <= 10)
+            direction = "N"
+        if (angle < 350 && angle > 280)
+            direction = "NW"
+        if (angle <= 280 && angle > 260)
+            direction = "W"
+        if (angle <= 260 && angle > 190)
+            direction = "SW"
+        if (angle <= 190 && angle > 170)
+            direction = "S"
+        if (angle <= 170 && angle > 100)
+            direction = "SE"
+        if (angle <= 100 && angle > 80)
+            direction = "E"
+        if (angle <= 80 && angle > 10)
+            direction = "NE"
+
+        return direction
     }
 
 }
