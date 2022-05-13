@@ -133,13 +133,13 @@ class MainActivity : ComponentActivity() {
                     prevLocation = b
                     currLocation.value = b
                 } else {
-                    prevLocation = currLocation.value
+                    //prevLocation = currLocation.value
                     currLocation.value = b
                     hAcc.value = b.accuracy.toString()
                     altitude.value = b.altitude.toString()
                     latitude.value = b.latitude.toString()
                     longitude.value = b.longitude.toString()
-                    if (isFollowMe.value && isLocationDiff(prevLocation!!, currLocation.value)) {
+                    /*if (isFollowMe.value && isLocationDiff(prevLocation!!, currLocation.value)) {
                         val heading = locationService?.calculateHeadingEuclid(prevLocation!!, currLocation.value)
                         var yawSensor = locationService?.updateOrientationAngles()
                         yawSensor = yawSensor?.let { Math.toRadians(it) }
@@ -158,6 +158,23 @@ class MainActivity : ComponentActivity() {
                                 airSpeed = airSpeed
                             )
                         }
+                    }*/
+                    if(isFollowMe.value){
+                        val distance = sliderDistance
+                        val yawSensor = locationService?.updateOrientationAngles()
+                            ?.let { Math.toRadians(it) }
+                        val newLocation = yawSensor?.let {
+                            locationService?.getNewCoordsEuclidean(currLocation.value,
+                                it, distance.value.toDouble())
+                        }
+                        if (newLocation?.let { isLocationDiff(prevLocation!!, it) } == true){
+                           val dist = locationService?.distanceInMetersEuclid(currLocation.value, newLocation)
+                           val airspeed = dist?.let { droneService?.calculateAirspeed(it) }
+                            droneService?.gotoLocation(newLocation,
+                            sliderAltitude.value.toDouble(),
+                            airspeed)
+                        }
+                        prevLocation = newLocation
                     }
                 }
             }
