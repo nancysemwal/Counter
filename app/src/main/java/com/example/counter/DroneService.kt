@@ -399,7 +399,7 @@ class DroneService : Service() {
         flag = 1
         //if(true){
         if(isArmable()){
-            var guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
+            val guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)
             val command : MavCmd = MavCmd.MAV_CMD_COMPONENT_ARM_DISARM
             val message : CommandLong = CommandLong.builder()
@@ -493,6 +493,13 @@ class DroneService : Service() {
         }catch (e : IOException){
             _writeToDebugSpace(e.toString())
         }
+        //TODO: Change mode from AUTO as specified in the ArduPilot docs
+    }
+
+    fun landUsingSetMode(latitude: Float = 0F, longitude: Float = 0F){
+        val landMode : Int = CopterMode.COPTER_MODE_LAND.ordinal
+        _writeToDebugSpace("Landing use DO_SET_MODE")
+        changeMode(landMode)
     }
 
     private fun setAirSpeed(airSpeed: Float){
@@ -581,7 +588,7 @@ class DroneService : Service() {
             location.altitude = altitude
             lastAltitude = altitude
         }
-        _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude}")
+        _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude} with altitude $altitude")
         if(groundSpeed != null){
             setGroundSpeed(groundSpeed)
         }
