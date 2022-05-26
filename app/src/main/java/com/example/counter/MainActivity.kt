@@ -85,10 +85,11 @@ class MainActivity : ComponentActivity() {
     private var sliderDistance = mutableStateOf(0f)
     private var heading = mutableStateOf(-0.0)
     private var yawSensor = mutableStateOf(-0.0)
+    private var prevYawSensor = 0.0
+    private val yawEps = 20
 
     var prevLocation: Location? = null
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
-
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val droneBinder = service as DroneService.DroneBinder
@@ -127,7 +128,15 @@ class MainActivity : ComponentActivity() {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
-            locationService?.setYawSensor { b -> yawSensor.value = b }
+            locationService?.setYawSensor { b ->
+                prevYawSensor = yawSensor.value
+                yawSensor.value = b
+                if(isFollowMe.value && abs(prevYawSensor - yawSensor.value) > yawEps){
+                    prevLocation?.let {
+                        droneService?.gotoLocation(it, sliderAltitude.value.toDouble())
+                    }
+                }
+            }
             locationService?.setLocation { b ->
                 if(prevLocation == null){
                     prevLocation = b
@@ -259,7 +268,7 @@ fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
-    , debugMessage: List<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
+    , debugMessage: MutableList<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
@@ -397,10 +406,20 @@ fun MainScreen(
                         .fillMaxWidth()
                 ){
                     Column() {
-                        Text(text = "Altitude: ${sliderAltitude.value.roundToInt()}")
+                        Text(text = "Altitude: ${sliderAltitude.value.roundToInt()} Meters")
                         Slider(
                             value = sliderAltitude.value,
                             onValueChange = { sliderAltitude.value = it },
+                            onValueChangeFinished = {
+                                if(isFollowMe.value){
+                                    val newLocation = location?.let { it1 ->
+                                        locationService?.getNewCoordsEuclidean(
+                                            it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
+                                    }
+                                if (newLocation != null) {
+                                    droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
+                                }
+                            }},
                             steps = 7,
                             valueRange = 4f..20f
                         )
@@ -412,13 +431,24 @@ fun MainScreen(
                         .fillMaxWidth()
                 ){
                     Column() {
-                        Text(text = "Distance: ${sliderDistance.value.roundToInt()}")
+                        Text(text = "Distance: ${sliderDistance.value.roundToInt()} Meters")
                         Slider(
                             value = sliderDistance.value,
                             onValueChange = { sliderDistance.value = it },
+                            onValueChangeFinished = {
+                                if(isFollowMe.value){
+                                    val newLocation = location?.let { it1 ->
+                                        locationService?.getNewCoordsEuclidean(
+                                            it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
+                                }
+                                if (newLocation != null) {
+                                    droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
+                                }
+                            }},
                             steps = 4,
                             valueRange = 0f..25f
                         )
+
                     }
                 }
                 Row(
@@ -442,7 +472,10 @@ fun MainScreen(
                         onClick = { droneService?.takeoff(sliderAltitude.value) }) {
                         Text(text = "Takeoff")
                     }
-                    RadioButton(selected = controlsEnabled, onClick = { })
+                    Button(enabled = controlsEnabled,
+                        onClick = { droneService?.land() }) {
+                        Text(text = "Land1")
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.SpaceAround,
@@ -452,8 +485,8 @@ fun MainScreen(
                         .padding(10.dp)
                 ) {
                     Button(enabled = controlsEnabled,
-                        onClick = { droneService?.land() }) {
-                        Text(text = "Land")
+                        onClick = { droneService?.landUsingSetMode() }) {
+                        Text(text = "Land2")
                     }
                     Button(
                         enabled = controlsEnabled,
