@@ -143,7 +143,7 @@ class LocationService : Service(), LocationListener, SensorEventListener {
         val newLocation : Location = Location("dummyprovider")
         newLocation.latitude = newLatitude / 1e5
         newLocation.longitude = newLongitude / 1e5
-        Log.d("eatery","euclidean new coords $newLocation")
+        _writeToDebugSpace("Calculated location $distanceInMts meters apart")
         return newLocation
     }
 
