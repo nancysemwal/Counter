@@ -497,9 +497,13 @@ class DroneService : Service() {
     }
 
     fun landUsingSetMode(latitude: Float = 0F, longitude: Float = 0F){
-        val landMode : Int = CopterMode.COPTER_MODE_LAND.ordinal
-        _writeToDebugSpace("Landing use DO_SET_MODE")
-        changeMode(landMode)
+        //val landMode : Int = CopterMode.COPTER_MODE_LAND.ordinal
+        //TODO: Ordinal gives value 8 while LAND mode is 9
+        val landMode : Int = 9
+        _writeToDebugSpace("Landing using DO_SET_MODE")
+        droneStatus = Status.Landing.name
+        _setDroneStatus(droneStatus)
+        changeMode(mode = landMode)
     }
 
     private fun setAirSpeed(airSpeed: Float){
@@ -577,6 +581,10 @@ class DroneService : Service() {
         groundSpeed: Float? = null,
         airSpeed: Float? = 1.0F
     ){
+        if(droneStatus != Status.InFlight.name){
+            _writeToDebugSpace("Fatal: GOTO Failed as drone not in flight")
+            return
+        }
         val acc = 15
         if(location.accuracy > acc){
             _writeToDebugSpace("Location accuracy > $acc meters. Drone won't proceed")

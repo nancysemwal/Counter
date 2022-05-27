@@ -84,9 +84,9 @@ class MainActivity : ComponentActivity() {
     private var sliderAltitude = mutableStateOf(5f)
     private var sliderDistance = mutableStateOf(0f)
     private var heading = mutableStateOf(-0.0)
-    private var yawSensor = mutableStateOf(-0.0)
-    private var prevYawSensor = 0.0
-    private val yawEps = 20
+    private var yawSensorDegrees = mutableStateOf(-0.0)
+    private var prevYawSensor = -0.0
+    private val yawEps = 10
 
     var prevLocation: Location? = null
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
@@ -123,15 +123,15 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+
     private val locationServiceConnection = object : ServiceConnection{
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
             locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
             locationService?.setYawSensor { b ->
-                prevYawSensor = yawSensor.value
-                yawSensor.value = b
-                if(isFollowMe.value && abs(prevYawSensor - yawSensor.value) > yawEps){
+                yawSensorDegrees.value = b
+                if(isFollowMe.value && abs(prevYawSensor - yawSensorDegrees.value) > yawEps){
                     prevLocation?.let {
                         droneService?.gotoLocation(it, sliderAltitude.value.toDouble())
                     }
@@ -148,26 +148,6 @@ class MainActivity : ComponentActivity() {
                     altitude.value = b.altitude.toString()
                     latitude.value = b.latitude.toString()
                     longitude.value = b.longitude.toString()
-                    /*if (isFollowMe.value && isLocationDiff(prevLocation!!, currLocation.value)) {
-                        val heading = locationService?.calculateHeadingEuclid(prevLocation!!, currLocation.value)
-                        var yawSensor = locationService?.updateOrientationAngles()
-                        yawSensor = yawSensor?.let { Math.toRadians(it) }
-                        val distance = sliderDistance
-                        val newLocation = yawSensor?.let {
-                            locationService?.getNewCoordsEuclidean(currLocation.value,
-                                it, distance.value.toDouble())
-                        }
-                        if (newLocation != null) {
-                            val dist = locationService?.distanceInMetersEuclid(currLocation.value,
-                            newLocation)
-                            val airSpeed = dist?.let { droneService?.calculateAirspeed(it) }
-                            droneService?.gotoLocation(
-                                newLocation,
-                                altitude = sliderAltitude.value.toDouble(),
-                                airSpeed = airSpeed
-                            )
-                        }
-                    }*/
                     if(isFollowMe.value){
                         val distance = sliderDistance
                         val yawSensor = locationService?.updateOrientationAngles()
@@ -178,7 +158,8 @@ class MainActivity : ComponentActivity() {
                         }
                         if (newLocation?.let { isLocationDiff(prevLocation!!, it) } == true){
                            val dist = locationService?.distanceInMetersEuclid(currLocation.value, newLocation)
-                           val airspeed = dist?.let { droneService?.calculateAirspeed(it) }
+                           prevYawSensor = yawSensorDegrees.value
+                            val airspeed = dist?.let { droneService?.calculateAirspeed(it) }
                             droneService?.gotoLocation(newLocation,
                             sliderAltitude.value.toDouble(),
                             airspeed)
@@ -225,7 +206,8 @@ class MainActivity : ComponentActivity() {
                     sliderAltitude,
                     sliderDistance,
                     heading,
-                    yawSensor
+                    yawSensorDegrees,
+                    {b -> prevYawSensor = b}
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -273,6 +255,7 @@ fun MainScreen(
     , longitude: String, altitude: String, hAcc: String, location: Location?
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
     , sliderDistance: MutableState<Float>, heading: MutableState<Double>, yawSensor: MutableState<Double>
+    , setPrevYawSensor:(Double) -> Unit
 )
 {
     Column() {
@@ -374,7 +357,7 @@ fun MainScreen(
                 .weight(0.2F)
                 .fillMaxWidth()){
                 items(debugMessage.size){
-                        Text(text = debugMessage[it])
+                        Text(text = "- " + debugMessage[it])
                 }
             }
         }
@@ -417,6 +400,7 @@ fun MainScreen(
                                             it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
                                     }
                                 if (newLocation != null) {
+                                    setPrevYawSensor(yawSensor.value)
                                     droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
                                 }
                             }},
@@ -432,19 +416,24 @@ fun MainScreen(
                 ){
                     Column() {
                         Text(text = "Distance: ${sliderDistance.value.roundToInt()} Meters")
+                        val sliderDistanceOld = sliderDistance.value
                         Slider(
                             value = sliderDistance.value,
                             onValueChange = { sliderDistance.value = it },
                             onValueChangeFinished = {
-                                if(isFollowMe.value){
-                                    val newLocation = location?.let { it1 ->
-                                        locationService?.getNewCoordsEuclidean(
-                                            it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
+                                if(abs(sliderDistance.value - sliderDistanceOld) > 0){
+                                    if(isFollowMe.value){
+                                        val newLocation = location?.let { it1 ->
+                                            locationService?.getNewCoordsEuclidean(
+                                                it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
+                                        }
+                                        if (newLocation != null) {
+                                            setPrevYawSensor(yawSensor.value)
+                                            droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
+                                        }
+                                    }
                                 }
-                                if (newLocation != null) {
-                                    droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
-                                }
-                            }},
+                                },
                             steps = 4,
                             valueRange = 0f..25f
                         )
