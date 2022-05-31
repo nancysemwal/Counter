@@ -16,13 +16,16 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.ActivityCompat
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.math.*
 
 class LocationService : Service(), LocationListener, SensorEventListener {
 
     private var _setBoundStatus : (Boolean) -> Unit = {_ -> {}}
-    private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
+    private var _writeToDebugSpace : (String) -> Unit = { b -> {} }
     private var _setLocation : (Location) -> Unit = {b -> {}}
     private var _setYawSensor : (Double) -> Unit = {b -> {}}
 
@@ -50,6 +53,8 @@ class LocationService : Service(), LocationListener, SensorEventListener {
     private val magnetometerReading = FloatArray(3)
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
+    var currPhoneLocation = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
+    var prevSentLocation =  mutableStateOf(Location(LocationManager.GPS_PROVIDER))
 
     override fun onCreate(){
         super.onCreate()
@@ -116,6 +121,7 @@ class LocationService : Service(), LocationListener, SensorEventListener {
     }
 
     override fun onLocationChanged(location: Location) {
+        currPhoneLocation.value = location
         if (location.provider != provider) return;
         _setLocation(location)
         _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy}")
@@ -143,7 +149,7 @@ class LocationService : Service(), LocationListener, SensorEventListener {
         val newLocation : Location = Location("dummyprovider")
         newLocation.latitude = newLatitude / 1e5
         newLocation.longitude = newLongitude / 1e5
-        _writeToDebugSpace("Calculated location $distanceInMts meters apart")
+        //_writeToDebugSpace("Calculated location $distanceInMts meters apart")
         return newLocation
     }
 

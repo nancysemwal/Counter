@@ -18,16 +18,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counter.ui.theme.CounterTheme
+import java.io.*
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 class MainActivity : ComponentActivity() {
 
@@ -77,10 +84,8 @@ class MainActivity : ComponentActivity() {
     private var longitude = mutableStateOf("")
     private var altitude = mutableStateOf("")
     private var hAcc = mutableStateOf("")
-    private var debugMessage = mutableListOf<String>()
-    private var currLocation = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
-    private val minAccuracy = 15.0F
-    private val eps = 1e-15
+    private var debugMessage = mutableStateListOf<String>()
+    private var phoneLocation = mutableStateOf(Location(LocationManager.GPS_PROVIDER))
     private var sliderAltitude = mutableStateOf(5f)
     private var sliderDistance = mutableStateOf(0f)
     private var heading = mutableStateOf(-0.0)
@@ -88,7 +93,8 @@ class MainActivity : ComponentActivity() {
     private var prevYawSensor = -0.0
     private val yawEps = 10
 
-    var prevLocation: Location? = null
+    //var prevLocation: Location = Location("dummyprovider")
+    var prevLocation : Location? = null
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -101,11 +107,14 @@ class MainActivity : ComponentActivity() {
             droneService?.setDroneStatus { b -> droneStatus.value = b
             if(droneStatus.value == Status.Landing.name){
                 isFollowMe.value = false
+                debugMessage.add(0, "FOLLOW ME disabled")
             }}
             droneService?.setMode { b -> mode.value = b }
             droneService?.setGpsFix { b -> gpsFix.value = b }
             droneService?.setSatellites { b -> satellites.value = b }
-            droneService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
+            droneService?.setWriteToDebugSpace { b ->
+                kotlin.run{debugMessage.add(0, mdformat.format(calendar.time) + " " + b) }
+            }
             isBound.value = true
             setFilters()
         }
@@ -116,56 +125,46 @@ class MainActivity : ComponentActivity() {
 
     }
 
-    private fun isLocationDiff(prev: Location, cur: Location) : Boolean {
-        if (cur.accuracy > minAccuracy) return false
-        if (abs(cur.latitude - prev.latitude) > eps) return true
-        if (abs(cur.longitude - prev.longitude) > eps) return true
-        return false
-    }
-
-
     private val locationServiceConnection = object : ServiceConnection{
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
-            locationService?.writeToDebugSpace { b -> debugMessage.add(0, b) }
+            locationService?.writeToDebugSpace { b -> debugMessage.add(0, mdformat.format(calendar.time) + " " + b) }
             locationService?.setYawSensor { b ->
                 yawSensorDegrees.value = b
-                if(isFollowMe.value && abs(prevYawSensor - yawSensorDegrees.value) > yawEps){
-                    prevLocation?.let {
-                        droneService?.gotoLocation(it, sliderAltitude.value.toDouble())
+                if(abs(prevYawSensor - yawSensorDegrees.value) > yawEps){
+                    val (check, loc, yw) = goToLocationWithPrevUpdate(isFollowMe.value,
+                        sliderDistance.value.toDouble(),
+                        locationService,
+                        droneService,
+                        phoneLocation.value,
+                        prevLocation!!,
+                        sliderAltitude.value.toDouble()
+                    )
+                    if(check){
+                        prevLocation = loc
+                        prevYawSensor = yw
                     }
                 }
             }
             locationService?.setLocation { b ->
                 if(prevLocation == null){
                     prevLocation = b
-                    currLocation.value = b
+                    phoneLocation.value = b
                 } else {
-                    //prevLocation = currLocation.value
-                    currLocation.value = b
+                    phoneLocation.value = b
                     hAcc.value = b.accuracy.toString()
                     altitude.value = b.altitude.toString()
                     latitude.value = b.latitude.toString()
                     longitude.value = b.longitude.toString()
-                    if(isFollowMe.value){
-                        val distance = sliderDistance
-                        val yawSensor = locationService?.updateOrientationAngles()
-                            ?.let { Math.toRadians(it) }
-                        val newLocation = yawSensor?.let {
-                            locationService?.getNewCoordsEuclidean(currLocation.value,
-                                it, distance.value.toDouble())
-                        }
-                        if (newLocation?.let { isLocationDiff(prevLocation!!, it) } == true){
-                           val dist = locationService?.distanceInMetersEuclid(currLocation.value, newLocation)
-                           prevYawSensor = yawSensorDegrees.value
-                            val airspeed = dist?.let { droneService?.calculateAirspeed(it) }
-                            droneService?.gotoLocation(newLocation,
-                            sliderAltitude.value.toDouble(),
-                            airspeed)
-                        }
-                        prevLocation = newLocation
-                    }
+                    goToLocationWithPrevUpdate(isFollowMe.value,
+                        sliderDistance.value.toDouble(),
+                        locationService,
+                        droneService,
+                        phoneLocation.value,
+                        prevLocation!!,
+                        sliderAltitude.value.toDouble()
+                    )
                 }
             }
             locationPermissionRequest.launch(arrayOf(
@@ -179,6 +178,7 @@ class MainActivity : ComponentActivity() {
             Log.d("srvc","location service disconnected")
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -201,13 +201,14 @@ class MainActivity : ComponentActivity() {
                     longitude.value,
                     altitude.value,
                     hAcc.value,
-                    currLocation.value,
+                    phoneLocation.value,
                     isFollowMe,
                     sliderAltitude,
                     sliderDistance,
                     heading,
                     yawSensorDegrees,
-                    {b -> prevYawSensor = b}
+                    {b -> prevYawSensor = b},
+                    prevLocation
                 )
 
                 /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
@@ -245,17 +246,18 @@ class MainActivity : ComponentActivity() {
 
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun MainScreen(
     isBound: Boolean, isConnected: Boolean, pitch: String
     , roll: String, yaw: String, droneService: DroneService?
     , droneStatus: String, mode: String, gpxFix: String, satellites: String
-    , debugMessage: MutableList<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
+    , debugMessage: SnapshotStateList<String>, locationPermissionRequest: ActivityResultLauncher<Array<String>>
     , locationService: LocationService?, latitude: String
     , longitude: String, altitude: String, hAcc: String, location: Location?
     , isFollowMe: MutableState<Boolean>, sliderAltitude: MutableState<Float>
     , sliderDistance: MutableState<Float>, heading: MutableState<Double>, yawSensor: MutableState<Double>
-    , setPrevYawSensor:(Double) -> Unit
+    , setPrevYawSensor:(Double) -> Unit, prevLocation: Location?
 )
 {
     Column() {
@@ -346,12 +348,14 @@ fun MainScreen(
                     .fillMaxWidth(),
                 textAlign = TextAlign.Center)
         }
-        Card(shape = RoundedCornerShape(8.dp,)
+        val context = LocalContext.current
+        Card(onClick = { saveLog(context, debugMessage[0]) }, shape = RoundedCornerShape(8.dp,)
             , backgroundColor = Color.LightGray
             , modifier = Modifier
                 .padding(2.dp)
                 .weight(0.5F)
         ) {
+
             LazyColumn(modifier = Modifier
                 .padding(2.dp)
                 .weight(0.2F)
@@ -422,14 +426,18 @@ fun MainScreen(
                             onValueChange = { sliderDistance.value = it },
                             onValueChangeFinished = {
                                 if(abs(sliderDistance.value - sliderDistanceOld) > 0){
-                                    if(isFollowMe.value){
-                                        val newLocation = location?.let { it1 ->
-                                            locationService?.getNewCoordsEuclidean(
-                                                it1, Math.toRadians(yawSensor.value), sliderDistance.value.toDouble())
-                                        }
-                                        if (newLocation != null) {
-                                            setPrevYawSensor(yawSensor.value)
-                                            droneService?.gotoLocation(newLocation, sliderAltitude.value.toDouble())
+                                    if(isFollowMe.value && locationService != null){
+                                        if (prevLocation != null) {
+                                            goToLocationWithPrevUpdate(
+                                                true,
+                                                distanceFromOriginalPoint = sliderDistance.value.toDouble(),
+                                                locationService = locationService,
+                                                droneService = droneService,
+                                                currLocation = locationService.currPhoneLocation.value,
+                                                prevLocation = prevLocation,
+                                                altitude = sliderAltitude.value.toDouble(),
+                                                isForced = true
+                                            )
                                         }
                                     }
                                 }
@@ -492,7 +500,11 @@ fun MainScreen(
                         Switch(
                             enabled = followMeEnabled,
                             checked = isFollowMe.value,
-                            onCheckedChange = { isFollowMe.value = it }
+                            onCheckedChange = {
+                                isFollowMe.value = it
+                                val message: String = mdformat.format(calendar.time) + " Follow Me is ${isFollowMe.value}"
+                                debugMessage.add(0, message)
+                            }
                         )
                     }
                 }
@@ -505,26 +517,86 @@ enum class Status {
     Offline, Unarmed, Armed, InFlight, Landing
 }
 
-@Composable
-fun LaunchedEffectMainScreen(
-    isUsbConnected: MutableState<Boolean>,
-    droneService: DroneService?
-){
-    var pitch = remember {
-        mutableStateOf("")
+fun saveLog(context: Context, log: String){
+    val path: File = context.filesDir
+    val file = File(path, "log.txt")
+    val stream = FileOutputStream(file)
+    val outputStreamWriter = OutputStreamWriter(context.openFileOutput("log.txt", Context.MODE_PRIVATE))
+    try{
+        outputStreamWriter.write(log)
+        Log.d("strm", "wrote $log to $path")
+        Toast.makeText(context, "Log Saved", Toast.LENGTH_SHORT).show()
     }
-    if(isUsbConnected.value){
-        LaunchedEffect(true){
-            Log.d("lunch", "in launched effect")
-            pitch.value = droneService?.ReadThread()?.getPitch().toString()
-        }
-    }
-    Column() {
-        Text(text = "USB Connected : ${isUsbConnected.value}")
-        Text(text = "Pitch : ${pitch.value}")
+    catch (e: IOException){
+        Toast.makeText(context, "Error saving log", Toast.LENGTH_SHORT).show()
     }
 }
 
+private const val minAccuracy = 15.0F
+private const val eps = 1e-15
+private var calendar = Calendar.getInstance()
+private var mdformat : SimpleDateFormat = SimpleDateFormat("HH:mm:ss")
 
+fun isLocationDiff(prev: Location, cur: Location) : Boolean {
+    if (cur.accuracy > minAccuracy) return false
+    if (abs(cur.latitude - prev.latitude) > eps) return true
+    if (abs(cur.longitude - prev.longitude) > eps) return true
+    return false
+}
+
+fun goToLocationWithPrevUpdate(
+    isFollowMe: Boolean,
+    distanceFromOriginalPoint: Double,
+    locationService: LocationService?,
+    droneService: DroneService?,
+    currLocation: Location,
+    prevLocation: Location,
+    altitude: Double,
+    isForced: Boolean = false
+) : Triple<Boolean, Location, Double> {
+    if(isFollowMe) {
+        val yawSensor = locationService?.updateOrientationAngles()
+            ?.let { Math.toRadians(it) }
+        val newLocation = yawSensor?.let {
+            locationService.getNewCoordsEuclidean(currLocation, it, distanceFromOriginalPoint)
+        }
+        if (newLocation != null) {
+            //prevLocation = newLocation
+            if (isForced || isLocationDiff(prevLocation, newLocation)) {
+                goToCalculatedLocation(newLocation, prevLocation,
+                droneService, altitude)
+            }
+            return Triple(true, newLocation, yawSensor)
+        }
+    }
+    return Triple(false, prevLocation, 0.0)
+}
+
+private fun goToCalculatedLocation(location: Location,
+                                   prevLocation: Location,
+                                   droneService: DroneService?,
+                                   altitude: Double
+    ){
+    val dist = distanceInMetersEuclid(location, prevLocation)
+    val airspeed = calculateAirspeed(dist)
+    droneService?.gotoLocation(location,
+        altitude,
+        airspeed)
+}
+
+fun calculateAirspeed(distance: Float): Float{
+    val speed : Float = 0.5F * distance
+    if(speed <= 1F) return 1F
+    if(speed >= 5F) return 5F
+    return speed
+}
+
+fun distanceInMetersEuclid(location1: Location, location2: Location): Float{
+    val latDiff = (location2.latitude - location1.latitude) * 1e5
+    val lonDiff = (location2.longitude - location1.longitude) * 1e5
+    val x = latDiff.pow(2)
+    val y = lonDiff.pow(2)
+    return sqrt(x + y).toFloat()
+}
 
 

@@ -23,7 +23,10 @@ import io.dronefleet.mavlink.common.*
 import java.io.IOException
 import java.math.RoundingMode
 import java.text.DecimalFormat
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.collections.HashMap
 import kotlin.math.*
 
 class DroneService : Service() {
@@ -35,7 +38,7 @@ class DroneService : Service() {
     private var _setRoll : (String) -> Unit = {b -> {}}
     private var _setYaw : (String) -> Unit = {b -> {}}
     private var _setDroneStatus : (String) -> Unit = {b -> {}}
-    private var _writeToDebugSpace : (String) -> Unit = {b -> {}}
+    private var _writeToDebugSpace : (String) -> Unit = { {} }
     private var _setMode : (String) -> Unit = {b -> {}}
     private var _setGpsFix : (String) -> Unit = {b -> {}}
     private var _setSatellites : (String) -> Unit = {b -> {}}
@@ -76,13 +79,12 @@ class DroneService : Service() {
         _setSatellites = _fn
     }
 
-    fun writeToDebugSpace(_fn: (String) -> Unit){
+    fun setWriteToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
     }
 
     private val usbReceiver = object : BroadcastReceiver(){
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d("HAPTORK", "onReceive()")
             if (intent != null) {
                 if(ACTION_USB_PERMISSION == intent.action) {
                     synchronized(this) {
@@ -160,6 +162,7 @@ class DroneService : Service() {
     private var satellites : String = ""
     private var ekfStatusFlags : Int = -1
     private var droneStatus : String = ""
+
     /*private var groundSpeed : Float = 0F
     private var airSpeed : Float = 0F*/
     val STATUS_NO_GPS = "com.nancy.dronestatus.NO_GPS"
@@ -314,11 +317,11 @@ class DroneService : Service() {
                             }
                         }
                     }
-                    if(message.payload is MissionAck){
+                    /*if(message.payload is MissionAck){
                         val ackMsg : MissionAck = message.payload as MissionAck
                         val result : String = ackMsg.type().entry().name
                         _writeToDebugSpace(result)
-                    }
+                    }*/
                     if(message.payload is VfrHud){
                         val vfrHudMsg : VfrHud = message.payload as VfrHud
                         val groundSpeed = vfrHudMsg.groundspeed()
@@ -489,7 +492,7 @@ class DroneService : Service() {
             .build();
         try{
             mavlinkConnection.send2(systemId, componentId, message)
-            Log.d("lndg","$latitude + $longitude")
+            _writeToDebugSpace("Landing using NAV_LAND")
         }catch (e : IOException){
             _writeToDebugSpace(e.toString())
         }
@@ -524,7 +527,6 @@ class DroneService : Service() {
             .build();
         try {
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("Air speed changed to $airSpeed m/s")
         }catch (e : IOException){
 
         }
@@ -548,7 +550,6 @@ class DroneService : Service() {
             .build();
         try {
             mavlinkConnection.send2(systemId, componentId, message)
-            _writeToDebugSpace("Ground speed changed to $groundSpeed m/s")
         }catch (e : IOException){
 
         }
@@ -579,7 +580,8 @@ class DroneService : Service() {
         location: Location,
         altitude: Double? = null,
         groundSpeed: Float? = null,
-        airSpeed: Float? = 1.0F
+        airSpeed: Float? = 1.0F,
+        distance: Float? = 0F //only for logging purpose
     ){
         if(droneStatus != Status.InFlight.name){
             _writeToDebugSpace("Fatal: GOTO Failed as drone not in flight")
@@ -587,7 +589,7 @@ class DroneService : Service() {
         }
         val acc = 15
         if(location.accuracy > acc){
-            _writeToDebugSpace("Location accuracy > $acc meters. Drone won't proceed")
+            _writeToDebugSpace("GPS Location accuracy > $acc meters. Drone won't proceed")
             return
         }
         if (altitude == null) {
@@ -596,7 +598,6 @@ class DroneService : Service() {
             location.altitude = altitude
             lastAltitude = altitude
         }
-        _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude} with altitude $altitude")
         if(groundSpeed != null){
             setGroundSpeed(groundSpeed)
         }
@@ -627,7 +628,11 @@ class DroneService : Service() {
             .build()
         try {
             mavlinkConnection.send2(systemId, componentId, message)
-            Log.d("wpt","$message")
+            _writeToDebugSpace("Going to ${location.latitude} , ${location.longitude}" +
+                    " with \n - altitude $altitude mts" +
+                    "\n - distance $distance mts " +
+                    "\n - airspeed $airSpeed m/s" +
+                    "\n - groundspeed $groundSpeed m/s")
         }catch (e : IOException){
 
         }
