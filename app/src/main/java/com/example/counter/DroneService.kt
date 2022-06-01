@@ -23,8 +23,6 @@ import io.dronefleet.mavlink.common.*
 import java.io.IOException
 import java.math.RoundingMode
 import java.text.DecimalFormat
-import java.text.SimpleDateFormat
-import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashMap
 import kotlin.math.*
@@ -91,19 +89,15 @@ class DroneService : Service() {
                         val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                             device?.apply {
-                                Log.d("Drishi", "Permission Granted")
                                 _setUsbStatus(true)
                                 droneStatus = Status.Unarmed.name
                                 _setDroneStatus(droneStatus)
                                 usbConnection = usbManager.openDevice(device)
                                 usbDevice = device
-                                Log.d("Drishi", "$usbConnection")
                                 ConnectionThread().start()
-                                //startMav()
                             }
                         } else {
-                            //TODO - convey "permission not granted" message to user
-                            Log.d("HAPTORK", "Permission is not Granted")
+                                _writeToDebugSpace("USB Permission not granted")
                         }
                     }
                 }
@@ -171,14 +165,13 @@ class DroneService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("HAPTORK","Service's onCreate()")
         _setBoundStatus(true)
         setFilter()
         findSerialPortDevice()
     }
 
     private fun setFilter() {
-        var filter = IntentFilter()
+        val filter = IntentFilter()
         filter.addAction(ACTION_USB_PERMISSION)
         filter.addAction(ACTION_USB_ATTACHED)
         filter.addAction(ACTION_USB_DETACHED)
@@ -186,7 +179,6 @@ class DroneService : Service() {
     }
 
     private fun findSerialPortDevice() {
-        Log.d("HAPTORK", "findSerialPortDevice")
         val deviceList : HashMap<String, UsbDevice> = usbManager.deviceList
         val intent = Intent(ACTION_USB_PERMISSION)
         deviceList.values.forEach(){
@@ -203,10 +195,9 @@ class DroneService : Service() {
                 if (serialPort.syncOpen()) {
                     serialPortConnected = true
                     serialPort.setBaudRate(57600)
-                    var inputStream: SerialInputStream = serialPort.inputStream
-                    var outputStream: SerialOutputStream = serialPort.outputStream
+                    val inputStream: SerialInputStream = serialPort.inputStream
+                    val outputStream: SerialOutputStream = serialPort.outputStream
                     mavlinkConnection = MavlinkConnection.create(inputStream, outputStream)
-                    Log.d("thrd", "$mavlinkConnection")
                     val requestDataStream = RequestDataStream.builder()
                         .targetSystem(1)
                         .targetComponent(0)
@@ -239,7 +230,6 @@ class DroneService : Service() {
                         pitch = decimalFormat.format(attitudeMsg.pitch()).toString()
                         roll = decimalFormat.format(attitudeMsg.roll()).toString()
                         yaw = decimalFormat.format(attitudeMsg.yaw()).toString()
-                        Log.d("ptch", "$pitch $roll $yaw")
                         _setPitch(pitch)
                         _setRoll(roll)
                         _setYaw(yaw)
@@ -248,15 +238,14 @@ class DroneService : Service() {
                         val heartbeatMsg : Heartbeat = message.payload as Heartbeat
                         val customMode : Int = heartbeatMsg.customMode().toInt()
                         val baseMode = heartbeatMsg.baseMode().value()
-                        val fmode = CopterMode.values()[customMode].name
-                        flightMode = fmode.split("_").last()
+                        val fMode = CopterMode.values()[customMode].name
+                        flightMode = fMode.split("_").last()
                         _setMode(flightMode)
                         armed = ((baseMode and 128) != 0)
                         if(armed && (droneStatus == Status.Unarmed.name))
                         {
                             droneStatus = Status.Armed.name
                             _setDroneStatus(droneStatus)
-                            Log.d("hrtbt","armed")
                             _writeToDebugSpace("Drone Armed")
                         }
                         else if(!armed){
@@ -282,14 +271,12 @@ class DroneService : Service() {
                         if(level == "CRITICAL" || level == "WARNING") {
                             _writeToDebugSpace("$level $logMsg")
                         }
-                        Log.d("ststxt","$level + $logMsg")
                     }
                     if(message.payload is CommandAck){
                         val ackMsg : CommandAck = message.payload as CommandAck
                         val command : String = ackMsg.command().entry().name
                         val result : String = ackMsg.result().entry().name
                         val reply = "$command sent\n$result"
-                        Log.d("rply", reply)
                         _writeToDebugSpace(reply)
                         if(ackMsg.command().value() == 400 /*arm/disarm*/ ){
                             if(flag == 1 /*arm*/ ){
@@ -326,18 +313,14 @@ class DroneService : Service() {
                         val vfrHudMsg : VfrHud = message.payload as VfrHud
                         val groundSpeed = vfrHudMsg.groundspeed()
                         val airSpeed = vfrHudMsg.airspeed()
-                        Log.d("vfrhud", "$groundSpeed $airSpeed")
                     }
                 }catch (e : IOException){
-                    Log.d("xxception", "hello")
+
                 }
             }
         }
         fun setKeep(keep: Boolean) {
             this.keep.set(keep)
-        }
-        fun getPitch() : String{
-            return pitch
         }
     }
 
@@ -358,7 +341,7 @@ class DroneService : Service() {
         unregisterReceiver(usbReceiver)
     }
 
-    fun isArmable() : Boolean{
+    private fun isArmable() : Boolean{
         var intent : Intent? = null
         when{
             flightMode == "COPTER_MODE_INITIALISING" -> intent = Intent(STATUS_NO_FLIGHTMODE)
@@ -389,7 +372,6 @@ class DroneService : Service() {
             .param6(0F)
             .param7(0F)
             .build();
-        Log.d("msgs",message.toString())
         try{
             mavlinkConnection.send2(systemId, componentId, message)
         }catch (e : IOException){
@@ -400,7 +382,6 @@ class DroneService : Service() {
 
     fun arm() {
         flag = 1
-        //if(true){
         if(isArmable()){
             val guidedMode: Int = CopterMode.COPTER_MODE_GUIDED.ordinal
             changeMode(mode = guidedMode)

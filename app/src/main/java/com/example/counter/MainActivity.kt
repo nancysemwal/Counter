@@ -93,7 +93,6 @@ class MainActivity : ComponentActivity() {
     private var prevYawSensor = -0.0
     private val yawEps = 10
 
-    //var prevLocation: Location = Location("dummyprovider")
     var prevLocation : Location? = null
     var isFollowMe : MutableState<Boolean> = mutableStateOf(false)
     private val serviceConnection = object : ServiceConnection {
@@ -107,7 +106,6 @@ class MainActivity : ComponentActivity() {
             droneService?.setDroneStatus { b -> droneStatus.value = b
             if(droneStatus.value == Status.Landing.name){
                 isFollowMe.value = false
-                debugMessage.add(0, "FOLLOW ME disabled")
             }}
             droneService?.setMode { b -> mode.value = b }
             droneService?.setGpsFix { b -> gpsFix.value = b }
@@ -129,10 +127,10 @@ class MainActivity : ComponentActivity() {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val locationBinder = service as LocationService.LocationBinder
             locationService = locationBinder.getService()
-            locationService?.writeToDebugSpace { b -> debugMessage.add(0, mdformat.format(calendar.time) + " " + b) }
+            locationService?.setWriteToDebugSpace { b -> debugMessage.add(0, mdformat.format(calendar.time) + " " + b) }
             locationService?.setYawSensor { b ->
                 yawSensorDegrees.value = b
-                if(abs(prevYawSensor - yawSensorDegrees.value) > yawEps){
+                if(abs(prevYawSensor - yawSensorDegrees.value) > yawEps && prevLocation != null){
                     val (check, loc, yw) = goToLocationWithPrevUpdate(isFollowMe.value,
                         sliderDistance.value.toDouble(),
                         locationService,
@@ -210,9 +208,6 @@ class MainActivity : ComponentActivity() {
                     {b -> prevYawSensor = b},
                     prevLocation
                 )
-
-                /*LaunchedEffectMainScreen(isUsbConnected = isUsbConnected
-                    , droneService = droneService)*/
             }
         }
     }
@@ -349,7 +344,7 @@ fun MainScreen(
                 textAlign = TextAlign.Center)
         }
         val context = LocalContext.current
-        Card(onClick = { saveLog(context, debugMessage[0]) }, shape = RoundedCornerShape(8.dp,)
+        Card(onClick = { saveLog(context, debugMessage.toList()) }, shape = RoundedCornerShape(8.dp,)
             , backgroundColor = Color.LightGray
             , modifier = Modifier
                 .padding(2.dp)
@@ -517,15 +512,16 @@ enum class Status {
     Offline, Unarmed, Armed, InFlight, Landing
 }
 
-fun saveLog(context: Context, log: String){
-    val path: File = context.filesDir
-    val file = File(path, "log.txt")
-    val stream = FileOutputStream(file)
-    val outputStreamWriter = OutputStreamWriter(context.openFileOutput("log.txt", Context.MODE_PRIVATE))
+fun saveLog(context: Context, dataToBeWritten: List<String>){
     try{
-        outputStreamWriter.write(log)
-        Log.d("strm", "wrote $log to $path")
-        Toast.makeText(context, "Log Saved", Toast.LENGTH_SHORT).show()
+        val mdFormatDate = SimpleDateFormat("dd-MMM-yyyy", Locale.US)
+        val logFileName = mdFormatDate.format(calendar.time).toString() + ".txt"
+        val outputStreamWriter = OutputStreamWriter(context.openFileOutput(logFileName, Context.MODE_APPEND))
+        dataToBeWritten.forEach {
+            outputStreamWriter.write(it + "\n")
+        }
+        outputStreamWriter.close()
+        Toast.makeText(context, "Log Saved to $logFileName", Toast.LENGTH_SHORT).show()
     }
     catch (e: IOException){
         Toast.makeText(context, "Error saving log", Toast.LENGTH_SHORT).show()
@@ -535,7 +531,7 @@ fun saveLog(context: Context, log: String){
 private const val minAccuracy = 15.0F
 private const val eps = 1e-15
 private var calendar = Calendar.getInstance()
-private var mdformat : SimpleDateFormat = SimpleDateFormat("HH:mm:ss")
+private var mdformat : SimpleDateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
 fun isLocationDiff(prev: Location, cur: Location) : Boolean {
     if (cur.accuracy > minAccuracy) return false

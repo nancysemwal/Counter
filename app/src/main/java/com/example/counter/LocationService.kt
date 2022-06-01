@@ -29,7 +29,7 @@ class LocationService : Service(), LocationListener, SensorEventListener {
     private var _setLocation : (Location) -> Unit = {b -> {}}
     private var _setYawSensor : (Double) -> Unit = {b -> {}}
 
-    fun writeToDebugSpace(_fn: (String) -> Unit){
+    fun setWriteToDebugSpace(_fn: (String) -> Unit){
         _writeToDebugSpace = _fn
     }
     fun setLocation(_fn: (Location) -> Unit){
@@ -124,7 +124,7 @@ class LocationService : Service(), LocationListener, SensorEventListener {
         currPhoneLocation.value = location
         if (location.provider != provider) return;
         _setLocation(location)
-        _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy}")
+        _writeToDebugSpace("Location updated by ${location.provider} Acc: ${location.accuracy} meters")
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
@@ -149,7 +149,6 @@ class LocationService : Service(), LocationListener, SensorEventListener {
         val newLocation : Location = Location("dummyprovider")
         newLocation.latitude = newLatitude / 1e5
         newLocation.longitude = newLongitude / 1e5
-        //_writeToDebugSpace("Calculated location $distanceInMts meters apart")
         return newLocation
     }
 
